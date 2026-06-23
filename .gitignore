@@ -1,0 +1,7 @@
+_build/
+.agents/
+.claude/
+out/
+main.o
+MPLABXLog.xml
+pwr-probe-test.code-workspace

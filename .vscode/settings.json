@@ -1,0 +1,5 @@
+{
+    "cmake.sourceDirectory": "C:/Users/Apollo Prog/MPLABProjects/pwr-probe-test/cmake/pwr-probe-test/default",
+    "mplab.clangd.compileCommandsDir": "${workspaceFolder}/_build/pwr-probe-test/default",
+    "mplab.clangd.dsc.defaultCore": "PIC24"
+}
