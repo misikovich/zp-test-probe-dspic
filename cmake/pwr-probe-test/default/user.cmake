@@ -9,6 +9,17 @@
 
 set(_FREERTOS_ROOT "${CMAKE_SOURCE_DIR}/../../../FreeRTOS")
 
+if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin")
+    set(_XC16_ROOT "/Applications/microchip/xc16/v2.10")
+    set(_MCHP_PACKS_ROOT "$ENV{HOME}/.mchp_packs")
+else()
+    set(_XC16_ROOT "C:/Program Files/Microchip/xc16/v2.10")
+    set(_MCHP_PACKS_ROOT "C:/Users/Apollo Prog/.mchp_packs")
+endif()
+
+set(_DFP_XC16_ROOT
+    "${_MCHP_PACKS_ROOT}/Microchip/dsPIC33E-GM-GP-MC-GU-MU_DFP/1.6.297/xc16")
+
 foreach(_t
     pwr_probe_test_default_default_XC16_compile
     pwr_probe_test_default_default_XC16_assemble
@@ -20,11 +31,10 @@ foreach(_t
             "__PIC24E__")
         target_include_directories(${_t} PRIVATE
             # XC16 implicit paths
-            "C:/Program Files/Microchip/xc16/v2.10/support/generic/h"
-            "C:/Program Files/Microchip/xc16/v2.10/support/PIC24E/h"
-            "C:/Program Files/Microchip/xc16/v2.10/include"
-            "C:/Users/Apollo Prog/.mchp_packs/Microchip/dsPIC33E-GM-GP-MC-GU-MU_DFP/1.6.297/xc16/support/PIC24E/h"
-            "C:/Users/Apollo Prog/.mchp_packs/Microchip/dsPIC33E-GM-GP-MC-GU-MU_DFP/1.6.297/xc16/include"
+            "${_XC16_ROOT}/support/generic/h"
+            "${_XC16_ROOT}/support/PIC24E/h"
+            "${_XC16_ROOT}/include"
+            "${_DFP_XC16_ROOT}/support/PIC24E/h"
             # Project root — FreeRTOSConfig.h lives here
             "${CMAKE_SOURCE_DIR}/../../../"
             # FreeRTOS kernel headers
@@ -38,6 +48,15 @@ foreach(_t
 endforeach()
 
 if(TARGET pwr_probe_test_default_default_XC16_compile)
+    get_target_property(_compile_sources
+        pwr_probe_test_default_default_XC16_compile SOURCES)
+    if(_compile_sources)
+        list(REMOVE_ITEM _compile_sources
+            "${CMAKE_SOURCE_DIR}/../../../src/display_hw.c")
+        set_target_properties(pwr_probe_test_default_default_XC16_compile
+            PROPERTIES SOURCES "${_compile_sources}")
+    endif()
+
     target_sources(pwr_probe_test_default_default_XC16_compile PRIVATE
         "${CMAKE_SOURCE_DIR}/../../../src/motor.c"
         "${CMAKE_SOURCE_DIR}/../../../src/st7789v.c"

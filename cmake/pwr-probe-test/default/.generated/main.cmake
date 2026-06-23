@@ -45,17 +45,17 @@ endif()
 
 
 # Main target for this project
-add_executable(pwr_probe_test_default_image_FxBTO9fd ${pwr_probe_test_default_library_list})
+add_executable(pwr_probe_test_default_image_PdE98j9L ${pwr_probe_test_default_library_list})
 
-set_target_properties(pwr_probe_test_default_image_FxBTO9fd PROPERTIES
+set_target_properties(pwr_probe_test_default_image_PdE98j9L PROPERTIES
     OUTPUT_NAME "default"
     SUFFIX ".elf"
     RUNTIME_OUTPUT_DIRECTORY "${pwr_probe_test_default_output_dir}")
-target_link_libraries(pwr_probe_test_default_image_FxBTO9fd PRIVATE ${pwr_probe_test_default_default_XC16_FILE_TYPE_link})
+target_link_libraries(pwr_probe_test_default_image_PdE98j9L PRIVATE ${pwr_probe_test_default_default_XC16_FILE_TYPE_link})
 
 # Add the link options from the rule file.
-pwr_probe_test_default_link_rule( pwr_probe_test_default_image_FxBTO9fd)
+pwr_probe_test_default_link_rule( pwr_probe_test_default_image_PdE98j9L)
 
 # Call bin2hex function from the rule file
-pwr_probe_test_default_bin2hex_rule(pwr_probe_test_default_image_FxBTO9fd)
+pwr_probe_test_default_bin2hex_rule(pwr_probe_test_default_image_PdE98j9L)
 
