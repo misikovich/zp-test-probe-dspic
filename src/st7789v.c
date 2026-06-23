@@ -1,8 +1,9 @@
 #include <stddef.h>
 #include <xc.h>
 #include <libpic30.h>
-#include "amazing_utils.h"
+#include "hardware.h"
 #include "project_clock.h"
+#include "fonts.h"
 #include "st7789v.h"
 
 #define ST7789V_CYCLES_PER_MS       (PROJECT_FCY_HZ / 1000UL)
@@ -288,14 +289,14 @@ static void st7789v_spi_write_u8_raw(u8 value)
 static void st7789v_select(void)
 {
     if (s_cfg.has_cs) {
-        pin_low(s_cfg.cs);
+        gpio_dw(&s_cfg.cs, 0u);
     }
 }
 
 static void st7789v_deselect(void)
 {
     if (s_cfg.has_cs) {
-        pin_high(s_cfg.cs);
+        gpio_dw(&s_cfg.cs, 1u);
     }
 }
 
@@ -313,11 +314,11 @@ static void st7789v_write_command_selected(u8 cmd, const u8 *data, u16 len)
     u16 i;
 
     st7789v_spi_set_mode16(0u);
-    pin_low(s_cfg.dc);
+    gpio_dw(&s_cfg.dc, 0u);
     st7789v_spi_write_u8_raw(cmd);
 
     if ((data != NULL) && (len > 0u)) {
-        pin_high(s_cfg.dc);
+        gpio_dw(&s_cfg.dc, 1u);
         for (i = 0u; i < len; i++) {
             st7789v_spi_write_u8_raw(data[i]);
         }
@@ -340,44 +341,37 @@ static void st7789v_write_one_raw(u8 cmd, u8 data)
 static void st7789v_reset_panel(void)
 {
     if (s_cfg.has_reset) {
-        pin_high(s_cfg.reset);
+        gpio_dw(&s_cfg.reset, 1u);
         st7789v_delay_ms(10u);
-        pin_low(s_cfg.reset);
+        gpio_dw(&s_cfg.reset, 0u);
         st7789v_delay_ms(20u);
-        pin_high(s_cfg.reset);
+        gpio_dw(&s_cfg.reset, 1u);
         st7789v_delay_ms(120u);
     }
 }
 
 static void st7789v_gpio_init(void)
 {
-    pin_ansel(s_cfg.sck, 0u);
-    pin_ansel(s_cfg.mosi, 0u);
-    pin_ansel(s_cfg.dc, 0u);
-
-    pin_low(s_cfg.sck);
-    pin_low(s_cfg.mosi);
-    pin_high(s_cfg.dc);
-    pin_output(s_cfg.sck);
-    pin_output(s_cfg.mosi);
-    pin_output(s_cfg.dc);
+    gpio_init_dw(&s_cfg.sck);
+    gpio_init_dw(&s_cfg.mosi);
+    gpio_init_dw(&s_cfg.dc);
+    gpio_dw(&s_cfg.sck, 0u);
+    gpio_dw(&s_cfg.mosi, 0u);
+    gpio_dw(&s_cfg.dc, 1u);
 
     if (s_cfg.has_cs) {
-        pin_ansel(s_cfg.cs, 0u);
-        pin_high(s_cfg.cs);
-        pin_output(s_cfg.cs);
+        gpio_init_dw(&s_cfg.cs);
+        gpio_dw(&s_cfg.cs, 1u);
     }
 
     if (s_cfg.has_reset) {
-        pin_ansel(s_cfg.reset, 0u);
-        pin_high(s_cfg.reset);
-        pin_output(s_cfg.reset);
+        gpio_init_dw(&s_cfg.reset);
+        gpio_dw(&s_cfg.reset, 1u);
     }
 
     if (s_cfg.has_backlight) {
-        pin_ansel(s_cfg.backlight, 0u);
-        pin_low(s_cfg.backlight);
-        pin_output(s_cfg.backlight);
+        gpio_init_dw(&s_cfg.backlight);
+        gpio_dw(&s_cfg.backlight, 0u);
     }
 }
 
@@ -556,7 +550,7 @@ void st7789v_set_backlight(u8 on)
         return;
     }
 
-    pin_set(s_cfg.backlight, on);
+    gpio_dw(&s_cfg.backlight, on);
 }
 
 void st7789v_set_madctl(u8 madctl)
@@ -568,6 +562,17 @@ void st7789v_set_madctl(u8 madctl)
     st7789v_finish_pixels();
     s_cfg.madctl = madctl;
     st7789v_write_one_raw(ST7789V_CMD_MADCTL, madctl);
+}
+
+void st7789v_set_rotation(u8 rotation)
+{
+    static const u8 madctl_map[4] = {
+        ST7789V_MADCTL_MY | ST7789V_MADCTL_MX | ST7789V_MADCTL_RGB, /* 0: MY|MX */
+        ST7789V_MADCTL_MY | ST7789V_MADCTL_MV | ST7789V_MADCTL_RGB, /* 1: MY|MV */
+        ST7789V_MADCTL_RGB,                                          /* 2: normal */
+        ST7789V_MADCTL_MX | ST7789V_MADCTL_MV | ST7789V_MADCTL_RGB  /* 3: MX|MV */
+    };
+    st7789v_set_madctl(madctl_map[rotation & 0x03u]);
 }
 
 void st7789v_set_inversion(u8 on)
@@ -624,157 +629,75 @@ void st7789v_begin_pixels(u16 x, u16 y, u16 w, u16 h)
     st7789v_finish_pixels();
     st7789v_select();
     st7789v_set_window_selected(x, y, w, h);
-    pin_high(s_cfg.dc);
+    gpio_dw(&s_cfg.dc, 1u);
     st7789v_spi_set_mode16(0u);
     s_write_active = 1u;
 }
 
 void st7789v_push_pixels(const u16 *rgb565, u32 count)
 {
-    volatile u16 dummy;
-    u16 pixel;
-
     if ((!s_ready) || (!s_write_active) || (rgb565 == NULL) || (count == 0UL)) {
         return;
     }
 
     if (s_spi_bus == ST7789V_BUS_SPI1_FIXED) {
+        volatile u16 dummy;
+        u8 hi;
+        u8 lo;
         while (count > 0UL) {
-            pixel = *rgb565;
+            hi = (u8)(*rgb565 >> 8u);
+            lo = (u8)(*rgb565 & 0x00FFu);
             rgb565++;
-
-            while (SPI1STATbits.SPITBF) {
-            }
-
-            SPI1BUF = (u16)(pixel >> 8u);
-
-            while (!SPI1STATbits.SPIRBF) {
-            }
-
-            dummy = SPI1BUF;
-            unused(dummy);
-
-            while (SPI1STATbits.SPITBF) {
-            }
-
-            SPI1BUF = (u16)(pixel & 0x00FFu);
-
-            while (!SPI1STATbits.SPIRBF) {
-            }
-
-            dummy = SPI1BUF;
-            unused(dummy);
             count--;
+            while (SPI1STATbits.SPITBF) {}
+            SPI1BUF = (u16)hi;
+            while (!SPI1STATbits.SPIRBF) {}
+            dummy = SPI1BUF;
+            while (SPI1STATbits.SPITBF) {}
+            SPI1BUF = (u16)lo;
+            while (!SPI1STATbits.SPIRBF) {}
+            dummy = SPI1BUF;
         }
-
-        if (SPI1STATbits.SPIROV) {
-            SPI1STATbits.SPIROV = 0u;
-        }
+        unused(dummy);
     } else {
         while (count > 0UL) {
-            pixel = *rgb565;
+            st7789v_spi_write_u8_raw((u8)(*rgb565 >> 8u));
+            st7789v_spi_write_u8_raw((u8)(*rgb565 & 0x00FFu));
             rgb565++;
-
-            while (SPI2STATbits.SPITBF) {
-            }
-
-            SPI2BUF = (u16)(pixel >> 8u);
-
-            while (!SPI2STATbits.SPIRBF) {
-            }
-
-            dummy = SPI2BUF;
-            unused(dummy);
-
-            while (SPI2STATbits.SPITBF) {
-            }
-
-            SPI2BUF = (u16)(pixel & 0x00FFu);
-
-            while (!SPI2STATbits.SPIRBF) {
-            }
-
-            dummy = SPI2BUF;
-            unused(dummy);
             count--;
-        }
-
-        if (SPI2STATbits.SPIROV) {
-            SPI2STATbits.SPIROV = 0u;
         }
     }
 }
 
 void st7789v_push_color(u16 rgb565, u32 count)
 {
-    volatile u16 dummy;
-    u16 high;
-    u16 low;
-
     if ((!s_ready) || (!s_write_active) || (count == 0UL)) {
         return;
     }
 
-    high = (u16)(rgb565 >> 8u);
-    low = (u16)(rgb565 & 0x00FFu);
-
     if (s_spi_bus == ST7789V_BUS_SPI1_FIXED) {
+        volatile u16 dummy;
+        u8 hi;
+        u8 lo;
+        hi = (u8)(rgb565 >> 8u);
+        lo = (u8)(rgb565 & 0x00FFu);
         while (count > 0UL) {
-            while (SPI1STATbits.SPITBF) {
-            }
-
-            SPI1BUF = high;
-
-            while (!SPI1STATbits.SPIRBF) {
-            }
-
-            dummy = SPI1BUF;
-            unused(dummy);
-
-            while (SPI1STATbits.SPITBF) {
-            }
-
-            SPI1BUF = low;
-
-            while (!SPI1STATbits.SPIRBF) {
-            }
-
-            dummy = SPI1BUF;
-            unused(dummy);
             count--;
+            while (SPI1STATbits.SPITBF) {}
+            SPI1BUF = (u16)hi;
+            while (!SPI1STATbits.SPIRBF) {}
+            dummy = SPI1BUF;
+            while (SPI1STATbits.SPITBF) {}
+            SPI1BUF = (u16)lo;
+            while (!SPI1STATbits.SPIRBF) {}
+            dummy = SPI1BUF;
         }
-
-        if (SPI1STATbits.SPIROV) {
-            SPI1STATbits.SPIROV = 0u;
-        }
+        unused(dummy);
     } else {
         while (count > 0UL) {
-            while (SPI2STATbits.SPITBF) {
-            }
-
-            SPI2BUF = high;
-
-            while (!SPI2STATbits.SPIRBF) {
-            }
-
-            dummy = SPI2BUF;
-            unused(dummy);
-
-            while (SPI2STATbits.SPITBF) {
-            }
-
-            SPI2BUF = low;
-
-            while (!SPI2STATbits.SPIRBF) {
-            }
-
-            dummy = SPI2BUF;
-            unused(dummy);
+            st7789v_spi_write_u8_raw((u8)(rgb565 >> 8u));
+            st7789v_spi_write_u8_raw((u8)(rgb565 & 0x00FFu));
             count--;
-        }
-
-        if (SPI2STATbits.SPIROV) {
-            SPI2STATbits.SPIROV = 0u;
         }
     }
 }
@@ -796,7 +719,7 @@ void st7789v_write_pixels(const u16 *rgb565, u32 count)
     }
 
     st7789v_select();
-    pin_high(s_cfg.dc);
+    gpio_dw(&s_cfg.dc, 1u);
     st7789v_spi_set_mode16(0u);
     s_write_active = 1u;
     st7789v_push_pixels(rgb565, count);
@@ -815,7 +738,7 @@ void st7789v_write_color(u16 rgb565, u32 count)
     }
 
     st7789v_select();
-    pin_high(s_cfg.dc);
+    gpio_dw(&s_cfg.dc, 1u);
     st7789v_spi_set_mode16(0u);
     s_write_active = 1u;
     st7789v_push_color(rgb565, count);
@@ -876,4 +799,271 @@ u16 st7789v_color565(u8 r, u8 g, u8 b)
     bb = (u16)((u16)b >> 3u);
 
     return (u16)(rr | gg | bb);
+}
+
+#define ST7789V_ABS(x) ((x) >= 0 ? (x) : -(x))
+
+void st7789v_draw_line(int x0, int y0, int x1, int y1, u16 color)
+{
+    int steep;
+    int dx;
+    int dy;
+    int err;
+    int ystep;
+    int tmp;
+
+    if (!s_ready) {
+        return;
+    }
+
+    steep = ST7789V_ABS(y1 - y0) > ST7789V_ABS(x1 - x0);
+    if (steep) {
+        tmp = x0; x0 = y0; y0 = tmp;
+        tmp = x1; x1 = y1; y1 = tmp;
+    }
+    if (x0 > x1) {
+        tmp = x0; x0 = x1; x1 = tmp;
+        tmp = y0; y0 = y1; y1 = tmp;
+    }
+    dx = x1 - x0;
+    dy = ST7789V_ABS(y1 - y0);
+    err = dx / 2;
+    ystep = (y0 < y1) ? 1 : -1;
+
+    for (; x0 <= x1; x0++) {
+        if (steep) {
+            st7789v_draw_pixel((u16)y0, (u16)x0, color);
+        } else {
+            st7789v_draw_pixel((u16)x0, (u16)y0, color);
+        }
+        err -= dy;
+        if (err < 0) {
+            y0 += ystep;
+            err += dx;
+        }
+    }
+}
+
+void st7789v_draw_rectangle(u16 x1, u16 y1, u16 x2, u16 y2, u16 color)
+{
+    st7789v_draw_line((int)x1, (int)y1, (int)x2, (int)y1, color);
+    st7789v_draw_line((int)x1, (int)y1, (int)x1, (int)y2, color);
+    st7789v_draw_line((int)x1, (int)y2, (int)x2, (int)y2, color);
+    st7789v_draw_line((int)x2, (int)y1, (int)x2, (int)y2, color);
+}
+
+void st7789v_draw_circle(u16 x0, u16 y0, u8 r, u16 color)
+{
+    int f = 1 - (int)r;
+    int ddF_x = 1;
+    int ddF_y = -2 * (int)r;
+    int x = 0;
+    int y = (int)r;
+    int cx = (int)x0;
+    int cy = (int)y0;
+
+    if (!s_ready) {
+        return;
+    }
+
+    st7789v_draw_pixel((u16)cx, (u16)(cy + y), color);
+    st7789v_draw_pixel((u16)cx, (u16)(cy - y), color);
+    st7789v_draw_pixel((u16)(cx + y), (u16)cy, color);
+    st7789v_draw_pixel((u16)(cx - y), (u16)cy, color);
+
+    while (x < y) {
+        if (f >= 0) {
+            y--;
+            ddF_y += 2;
+            f += ddF_y;
+        }
+        x++;
+        ddF_x += 2;
+        f += ddF_x;
+        st7789v_draw_pixel((u16)(cx + x), (u16)(cy + y), color);
+        st7789v_draw_pixel((u16)(cx - x), (u16)(cy + y), color);
+        st7789v_draw_pixel((u16)(cx + x), (u16)(cy - y), color);
+        st7789v_draw_pixel((u16)(cx - x), (u16)(cy - y), color);
+        st7789v_draw_pixel((u16)(cx + y), (u16)(cy + x), color);
+        st7789v_draw_pixel((u16)(cx - y), (u16)(cy + x), color);
+        st7789v_draw_pixel((u16)(cx + y), (u16)(cy - x), color);
+        st7789v_draw_pixel((u16)(cx - y), (u16)(cy - x), color);
+    }
+}
+
+void st7789v_draw_filled_circle(int x0, int y0, int r, u16 color)
+{
+    int f = 1 - r;
+    int ddF_x = 1;
+    int ddF_y = -2 * r;
+    int x = 0;
+    int y = r;
+
+    if (!s_ready) {
+        return;
+    }
+
+    st7789v_draw_pixel((u16)x0, (u16)(y0 + r), color);
+    st7789v_draw_pixel((u16)x0, (u16)(y0 - r), color);
+    st7789v_draw_pixel((u16)(x0 + r), (u16)y0, color);
+    st7789v_draw_pixel((u16)(x0 - r), (u16)y0, color);
+    st7789v_draw_line(x0 - r, y0, x0 + r, y0, color);
+
+    while (x < y) {
+        if (f >= 0) {
+            y--;
+            ddF_y += 2;
+            f += ddF_y;
+        }
+        x++;
+        ddF_x += 2;
+        f += ddF_x;
+        st7789v_draw_line(x0 - x, y0 + y, x0 + x, y0 + y, color);
+        st7789v_draw_line(x0 + x, y0 - y, x0 - x, y0 - y, color);
+        st7789v_draw_line(x0 + y, y0 + x, x0 - y, y0 + x, color);
+        st7789v_draw_line(x0 + y, y0 - x, x0 - y, y0 - x, color);
+    }
+}
+
+void st7789v_draw_triangle(u16 x1, u16 y1, u16 x2, u16 y2, u16 x3, u16 y3, u16 color)
+{
+    st7789v_draw_line((int)x1, (int)y1, (int)x2, (int)y2, color);
+    st7789v_draw_line((int)x2, (int)y2, (int)x3, (int)y3, color);
+    st7789v_draw_line((int)x3, (int)y3, (int)x1, (int)y1, color);
+}
+
+void st7789v_draw_filled_triangle(u16 x1p, u16 y1p, u16 x2p, u16 y2p,
+                                   u16 x3p, u16 y3p, u16 color)
+{
+    int x1 = (int)x1p;
+    int y1 = (int)y1p;
+    int x2 = (int)x2p;
+    int y2 = (int)y2p;
+    int x3 = (int)x3p;
+    int y3 = (int)y3p;
+    int deltax;
+    int deltay;
+    int x;
+    int y;
+    int xinc1;
+    int xinc2;
+    int yinc1;
+    int yinc2;
+    int den;
+    int num;
+    int numadd;
+    int numpixels;
+    int curpixel;
+
+    deltax = ST7789V_ABS(x2 - x1);
+    deltay = ST7789V_ABS(y2 - y1);
+    x = x1;
+    y = y1;
+
+    xinc1 = (x2 >= x1) ? 1 : -1;
+    xinc2 = xinc1;
+    yinc1 = (y2 >= y1) ? 1 : -1;
+    yinc2 = yinc1;
+
+    if (deltax >= deltay) {
+        xinc1 = 0;
+        yinc2 = 0;
+        den = deltax;
+        num = deltax / 2;
+        numadd = deltay;
+        numpixels = deltax;
+    } else {
+        xinc2 = 0;
+        yinc1 = 0;
+        den = deltay;
+        num = deltay / 2;
+        numadd = deltax;
+        numpixels = deltay;
+    }
+
+    for (curpixel = 0; curpixel <= numpixels; curpixel++) {
+        st7789v_draw_line(x, y, x3, y3, color);
+        num += numadd;
+        if (num >= den) {
+            num -= den;
+            x += xinc1;
+            y += yinc1;
+        }
+        x += xinc2;
+        y += yinc2;
+    }
+}
+
+void st7789v_draw_image(u16 x, u16 y, u16 w, u16 h, const u16 *data)
+{
+    u32 count;
+
+    if ((!s_ready) || (data == NULL) || (w == 0u) || (h == 0u)) {
+        return;
+    }
+    if ((x >= s_cfg.width) || (y >= s_cfg.height)) {
+        return;
+    }
+    if (((u32)x + (u32)w) > (u32)s_cfg.width) {
+        return;
+    }
+    if (((u32)y + (u32)h) > (u32)s_cfg.height) {
+        return;
+    }
+
+    count = (u32)w * (u32)h;
+    st7789v_begin_pixels(x, y, w, h);
+    st7789v_push_pixels(data, count);
+    st7789v_end_pixels();
+}
+
+void st7789v_write_char(u16 x, u16 y, char ch, FontDef font, u16 color, u16 bgcolor)
+{
+    u32 i;
+    u32 j;
+    u16 b;
+
+    if (!s_ready) {
+        return;
+    }
+    if ((ch < 32) || (ch > 126)) {
+        return;
+    }
+
+    st7789v_begin_pixels(x, y, (u16)font.width, (u16)font.height);
+    for (i = 0UL; i < (u32)font.height; i++) {
+        b = font.data[((u32)(unsigned char)(ch - 32) * (u32)font.height) + i];
+        for (j = 0UL; j < (u32)font.width; j++) {
+            if (b & (u16)(0x8000u >> j)) {
+                st7789v_push_color(color, 1UL);
+            } else {
+                st7789v_push_color(bgcolor, 1UL);
+            }
+        }
+    }
+    st7789v_end_pixels();
+}
+
+void st7789v_write_string(u16 x, u16 y, const char *str, FontDef font,
+                           u16 color, u16 bgcolor)
+{
+    if ((!s_ready) || (str == NULL)) {
+        return;
+    }
+    while (*str != '\0') {
+        if (((u32)x + (u32)font.width) >= (u32)s_cfg.width) {
+            x = 0u;
+            y = (u16)((u32)y + (u32)font.height);
+            if (((u32)y + (u32)font.height) >= (u32)s_cfg.height) {
+                break;
+            }
+            if (*str == ' ') {
+                str++;
+                continue;
+            }
+        }
+        st7789v_write_char(x, y, *str, font, color, bgcolor);
+        x = (u16)((u32)x + (u32)font.width);
+        str++;
+    }
 }

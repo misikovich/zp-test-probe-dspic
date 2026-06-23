@@ -16,13 +16,6 @@ typedef uint8_t u8;
 
 typedef struct {
     volatile u16 *lat;
-    volatile u16 *tris;
-    volatile u16 *ansel;
-    u16 mask;
-} Pin;
-
-typedef struct {
-    volatile u16 *lat;
     volatile u16 *port;
     volatile u16 *tris;
     volatile u16 *ansel;
@@ -30,23 +23,15 @@ typedef struct {
 } GPIO;
 
 typedef struct {
-    Pin pin;
+    GPIO gpio;
     u8 adc_ch;
 } ANPI;
 
 typedef struct {
-    Pin pin;
+    GPIO gpio;
     volatile u16 *reg;
     u16 max;
 } ANPO;
-
-static inline void pin_input(Pin p)          { *p.tris |= p.mask; }
-static inline void pin_output(Pin p)         { *p.tris &= (u16)~p.mask; }
-static inline void pin_high(Pin p)           { *p.lat  |= p.mask; }
-static inline void pin_low(Pin p)            { *p.lat  &= (u16)~p.mask; }
-static inline void pin_toggle(Pin p)         { *p.lat  ^= p.mask; }
-static inline void pin_set(Pin p, u16 val)   { if (val) *p.lat |= p.mask; else *p.lat &= (u16)~p.mask; }
-static inline void pin_ansel(Pin p, u8 val)  { if (p.ansel) { if (val) *p.ansel |= p.mask; else *p.ansel &= (u16)~p.mask; } }
 
 static inline void gpio_init_dr(const GPIO *pin) {
     *pin->tris |= pin->mask;
@@ -97,8 +82,10 @@ static inline void adc1_init(void) {
 }
 
 static inline void anpi_init_ar(const ANPI *pin) {
-    pin_input(pin->pin);
-    pin_ansel(pin->pin, 1u);
+    *pin->gpio.tris |= pin->gpio.mask;
+    if (pin->gpio.ansel) {
+        *pin->gpio.ansel |= pin->gpio.mask;
+    }
     adc1_init();
 }
 
@@ -116,8 +103,7 @@ static inline u16 anpi_ar(const ANPI *pin) {
 }
 
 static inline void anpo_init_aw(const ANPO *pin) {
-    pin_output(pin->pin);
-    pin_ansel(pin->pin, 0u);
+    gpio_init_dw(&pin->gpio);
 }
 
 static inline void anpo_aw(const ANPO *pin, u16 value) {
@@ -133,10 +119,6 @@ static inline void anpo_aw(const ANPO *pin, u16 value) {
     if (pin->reg) {
         *pin->reg = value;
     }
-}
-
-static inline void anpi_aw(const ANPO *pin, u16 value) {
-    anpo_aw(pin, value);
 }
 
 static inline void gpio_init(unsigned int *tris, unsigned int *ansel, unsigned int *lat) {

@@ -2,11 +2,11 @@
 #define PROJECT_CLOCK_H
 
 #define PROJECT_FRC_HZ             7370000UL
-#define PROJECT_USE_PLL            0u
+#define PROJECT_USE_PLL            1u
 
 #if PROJECT_USE_PLL
 #define PROJECT_PLL_N1             2UL
-#define PROJECT_PLL_M              76UL
+#define PROJECT_PLL_M              78UL
 #define PROJECT_PLL_N2             2UL
 
 #define PROJECT_PLLPRE_BITS        (PROJECT_PLL_N1 - 2UL)
@@ -24,7 +24,7 @@
 
 #ifndef PROJECT_DISPLAY_SPI_HZ
 #if PROJECT_USE_PLL
-#define PROJECT_DISPLAY_SPI_HZ     10000000UL
+#define PROJECT_DISPLAY_SPI_HZ     400000000UL
 #else
 #define PROJECT_DISPLAY_SPI_HZ     PROJECT_FCY_HZ
 #endif

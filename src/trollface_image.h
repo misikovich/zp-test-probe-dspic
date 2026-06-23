@@ -1,7 +1,7 @@
 #ifndef TROLLFACE_IMAGE_H
 #define TROLLFACE_IMAGE_H
 
-#include "amazing_utils.h"
+#include "hardware.h"
 
 #define TROLLFACE_IMAGE_WIDTH       32u
 #define TROLLFACE_IMAGE_HEIGHT      32u

@@ -2,7 +2,7 @@
 #include <stdint.h>
 #include "FreeRTOS.h"
 #include "task.h"
-#include "amazing_utils.h"
+#include "hardware.h"
 #include "project_clock.h"
 #include "motor.h"
 #include "pwm.h"
@@ -30,11 +30,11 @@
 #define LEDW_BRIGHTNESS   200u
 #define DISPLAY_TASK_STACK 256u
 
-/* PwmPin = { { LAT, TRIS, ANSEL, mask }, RP number, OC channel } */
-static const PwmPin LED_R = { { &LATB, &TRISB, &ANSELB, 1u << 8  }, 40u, 1u };
-static const PwmPin LED_G = { { &LATB, &TRISB, NULL,    1u << 10 }, 42u, 2u };
-static const PwmPin LED_B = { { &LATB, &TRISB, NULL,    1u << 6  }, 38u, 3u };
-static const PwmPin LED_W = { { &LATB, &TRISB, NULL,    1u << 5  }, 37u, 4u };
+/* PwmPin = { { LAT, PORT, TRIS, ANSEL, mask }, RP number, OC channel } */
+static const PwmPin LED_R = { { &LATB, &PORTB, &TRISB, &ANSELB, 1u << 8  }, 40u, 1u };
+static const PwmPin LED_G = { { &LATB, &PORTB, &TRISB, NULL,    1u << 10 }, 42u, 2u };
+static const PwmPin LED_B = { { &LATB, &PORTB, &TRISB, NULL,    1u << 6  }, 38u, 3u };
+static const PwmPin LED_W = { { &LATB, &PORTB, &TRISB, NULL,    1u << 5  }, 37u, 4u };
 
 static void prvInitClock(void)
 {

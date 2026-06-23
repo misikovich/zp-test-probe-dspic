@@ -1,5 +1,5 @@
 #include <xc.h>
-#include "amazing_utils.h"
+#include "hardware.h"
 #include "project_clock.h"
 #include "pwm.h"
 
@@ -206,9 +206,8 @@ void pwm_init(PwmPin p, u16 duty)
     *oc->rs = 0u;
     s_pps_mapped[idx] = 0u;
 
-    pin_ansel(p.pin, 0u);
-    pin_low(p.pin);
-    pin_output(p.pin);
+    gpio_init_dw(&p.gpio);
+    gpio_dw(&p.gpio, 0u);
 
     pwm_set_duty(p, duty);
 }
@@ -232,24 +231,23 @@ void pwm_set_duty(PwmPin p, u16 duty)
     s_duty[idx] = duty;
     oc = &s_oc[idx];
 
-    pin_ansel(p.pin, 0u);
-    pin_output(p.pin);
+    gpio_init_dw(&p.gpio);
 
     if (duty == 0u) {
         pwm_disable_output(p, idx);
-        pin_low(p.pin);
+        gpio_dw(&p.gpio, 0u);
         return;
     }
 
     if (duty >= PWM_DUTY_MAX) {
         pwm_disable_output(p, idx);
-        pin_high(p.pin);
+        gpio_dw(&p.gpio, 1u);
         return;
     }
 
     if (!s_pps_mapped[idx]) {
         if (!pwm_pps_write(p.rp_num, oc->pps_fn)) {
-            pin_low(p.pin);
+            gpio_dw(&p.gpio, 0u);
             return;
         }
         s_pps_mapped[idx] = 1u;
@@ -274,7 +272,7 @@ void pwm_stop(PwmPin p)
     }
 
     pwm_disable_output(p, idx);
-    pin_low(p.pin);
+    gpio_dw(&p.gpio, 0u);
 }
 
 void pwm_start(PwmPin p)

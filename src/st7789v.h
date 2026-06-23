@@ -1,8 +1,9 @@
 #ifndef ST7789V_H
 #define ST7789V_H
 
-#include "amazing_utils.h"
+#include "hardware.h"
 #include "project_clock.h"
+#include "fonts.h"
 
 #define ST7789V_DEFAULT_WIDTH       240u
 #define ST7789V_DEFAULT_HEIGHT      240u
@@ -26,12 +27,12 @@
 #define ST7789V_RGB565_BLUE         0x001Fu
 
 typedef struct {
-    Pin sck;
-    Pin mosi;
-    Pin dc;
-    Pin cs;
-    Pin reset;
-    Pin backlight;
+    GPIO sck;
+    GPIO mosi;
+    GPIO dc;
+    GPIO cs;
+    GPIO reset;
+    GPIO backlight;
 
     u8 sck_rp_num;
     u8 mosi_rp_num;
@@ -80,5 +81,16 @@ void st7789v_fill_rect(u16 x, u16 y, u16 w, u16 h, u16 rgb565);
 void st7789v_fill_screen(u16 rgb565);
 
 u16 st7789v_color565(u8 r, u8 g, u8 b);
+
+void st7789v_set_rotation(u8 rotation);
+void st7789v_write_char(u16 x, u16 y, char ch, FontDef font, u16 color, u16 bgcolor);
+void st7789v_write_string(u16 x, u16 y, const char *str, FontDef font, u16 color, u16 bgcolor);
+void st7789v_draw_line(int x0, int y0, int x1, int y1, u16 color);
+void st7789v_draw_rectangle(u16 x1, u16 y1, u16 x2, u16 y2, u16 color);
+void st7789v_draw_circle(u16 x0, u16 y0, u8 r, u16 color);
+void st7789v_draw_filled_circle(int x0, int y0, int r, u16 color);
+void st7789v_draw_triangle(u16 x1, u16 y1, u16 x2, u16 y2, u16 x3, u16 y3, u16 color);
+void st7789v_draw_filled_triangle(u16 x1, u16 y1, u16 x2, u16 y2, u16 x3, u16 y3, u16 color);
+void st7789v_draw_image(u16 x, u16 y, u16 w, u16 h, const u16 *data);
 
 #endif /* ST7789V_H */

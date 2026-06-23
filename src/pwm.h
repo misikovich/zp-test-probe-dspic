@@ -1,7 +1,7 @@
 #ifndef PWM_H
 #define PWM_H
 
-#include "amazing_utils.h"
+#include "hardware.h"
 
 /*
  * Simple edge-aligned PWM via OC1-OC4.
@@ -17,7 +17,7 @@
 #define PWM_DUTY_MAX 1000u
 
 typedef struct {
-    Pin pin;
+    GPIO gpio;
     u8 rp_num;
     u8 ch;
 } PwmPin;

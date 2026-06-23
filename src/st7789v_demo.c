@@ -1,7 +1,7 @@
 #include <xc.h>
 #include "FreeRTOS.h"
 #include "task.h"
-#include "amazing_utils.h"
+#include "hardware.h"
 #include "st7789v.h"
 #include "st7789v_demo.h"
 #include "trollface_image.h"
@@ -16,23 +16,22 @@
 #define DISPLAY_FACE_W             184u
 #define DISPLAY_FACE_H             184u
 #define DISPLAY_TE_MASK            (1u << 9)
-#define DISPLAY_TE_TIMEOUT_LOOPS   60000UL
+#define DISPLAY_TE_TIMEOUT_LOOPS   (PROJECT_FCY_HZ / 400UL)
 
-static const Pin DISPLAY_CS        = { &LATD, &TRISD, NULL,    1u << 5 };
-static const Pin DISPLAY_SCK       = { &LATC, &TRISC, NULL,    1u << 3 };
-static const Pin DISPLAY_MOSI      = { &LATA, &TRISA, &ANSELA, 1u << 4 };
-static const Pin DISPLAY_MISO      = { &LATA, &TRISA, NULL,    1u << 9 };
-static const Pin DISPLAY_DC        = { &LATA, &TRISA, NULL,    1u << 7 };
-static const Pin DISPLAY_RST       = { &LATC, &TRISC, NULL,    1u << 6 };
-static const Pin DISPLAY_TE        = { &LATG, &TRISG, NULL,    1u << 9 };
-static const Pin DISPLAY_BACKLIGHT = { &LATC, &TRISC, NULL,    1u << 7 };
+static const GPIO DISPLAY_CS        = { &LATD, &PORTD, &TRISD, NULL,    1u << 5 };
+static const GPIO DISPLAY_SCK       = { &LATC, &PORTC, &TRISC, NULL,    1u << 3 };
+static const GPIO DISPLAY_MOSI      = { &LATA, &PORTA, &TRISA, &ANSELA, 1u << 4 };
+static const GPIO DISPLAY_MISO      = { &LATA, &PORTA, &TRISA, NULL,    1u << 9 };
+static const GPIO DISPLAY_DC        = { &LATA, &PORTA, &TRISA, NULL,    1u << 7 };
+static const GPIO DISPLAY_RST       = { &LATC, &PORTC, &TRISC, NULL,    1u << 6 };
+static const GPIO DISPLAY_TE        = { &LATG, &PORTG, &TRISG, NULL,    1u << 9 };
+static const GPIO DISPLAY_BACKLIGHT = { &LATC, &PORTC, &TRISC, NULL,    1u << 7 };
 
 static u16 s_display_line[DISPLAY_WIDTH];
 
-static void demo_pin_input(Pin p)
+static void demo_gpio_input(const GPIO *pin)
 {
-    pin_ansel(p, 0u);
-    *p.tris |= p.mask;
+    gpio_init_dr(pin);
 }
 
 static u8 display_te_high(void)
@@ -59,8 +58,8 @@ static u8 display_demo_init(void)
 {
     St7789vConfig cfg;
 
-    demo_pin_input(DISPLAY_MISO);
-    demo_pin_input(DISPLAY_TE);
+    demo_gpio_input(&DISPLAY_MISO);
+    demo_gpio_input(&DISPLAY_TE);
 
     cfg.sck = DISPLAY_SCK;
     cfg.mosi = DISPLAY_MOSI;
@@ -90,6 +89,7 @@ static u8 display_demo_init(void)
     }
 
     st7789v_set_tearing_effect(1u, 0u);
+    st7789v_set_rotation(1);
     return 1u;
 }
 

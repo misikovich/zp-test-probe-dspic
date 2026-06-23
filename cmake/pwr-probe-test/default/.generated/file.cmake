@@ -24,6 +24,7 @@ set(pwr_probe_test_default_default_XC16_FILE_TYPE_compile
     "${CMAKE_CURRENT_SOURCE_DIR}/../../../FreeRTOS/Source/stream_buffer.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/../../../FreeRTOS/Source/tasks.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/../../../FreeRTOS/Source/timers.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../../src/fonts.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/../../../src/main.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/../../../src/motor.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/../../../src/pwm.c"
