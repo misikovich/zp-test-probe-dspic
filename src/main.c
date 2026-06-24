@@ -6,7 +6,7 @@
 #include "project_clock.h"
 #include "motor.h"
 #include "pwm.h"
-#include "st7789v_demo.h"
+#include "display_hw.h"
 
 /* Configuration bits */
 #pragma config FNOSC    = FRC
@@ -96,6 +96,19 @@ static void vMotorTestTask(void *pvParameters) {
         vTaskDelayMS(500);
         mtr_drive(STOP);
         vTaskDelayMS(2000);
+    }
+}
+
+void vDisplayDemoTask(void *pvParameters)
+{
+    unused(pvParameters);
+
+    vTaskDelayMS(50u);
+    st_init();
+
+    forever {
+        st_perform_test();
+        vTaskDelayMS(1000u);
     }
 }
 

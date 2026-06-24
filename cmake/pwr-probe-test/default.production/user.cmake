@@ -48,17 +48,25 @@ foreach(_t
 endforeach()
 
 if(TARGET pwr_probe_test_default_default_XC16_compile)
+    set(_fonts_source "${CMAKE_SOURCE_DIR}/../../../src/fonts.c")
+    set(_fonts_index -1)
     get_target_property(_compile_sources
         pwr_probe_test_default_default_XC16_compile SOURCES)
     if(_compile_sources)
         list(REMOVE_ITEM _compile_sources
-            "${CMAKE_SOURCE_DIR}/../../../src/display_hw.c")
+            "${CMAKE_SOURCE_DIR}/../../../src/st7789v.c"
+            "${CMAKE_SOURCE_DIR}/../../../src/st7789v_demo.c")
+        list(FIND _compile_sources "${_fonts_source}" _fonts_index)
         set_target_properties(pwr_probe_test_default_default_XC16_compile
             PROPERTIES SOURCES "${_compile_sources}")
     endif()
 
     target_sources(pwr_probe_test_default_default_XC16_compile PRIVATE
         "${CMAKE_SOURCE_DIR}/../../../src/motor.c"
-        "${CMAKE_SOURCE_DIR}/../../../src/st7789v.c"
-        "${CMAKE_SOURCE_DIR}/../../../src/st7789v_demo.c")
+        "${CMAKE_SOURCE_DIR}/../../../src/display_hw.c")
+
+    if(_fonts_index EQUAL -1)
+        target_sources(pwr_probe_test_default_default_XC16_compile PRIVATE
+            "${_fonts_source}")
+    endif()
 endif()

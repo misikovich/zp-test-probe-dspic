@@ -1,6 +1,6 @@
 # The following functions contains all the flags passed to the different build stages.
 
-set(PACK_REPO_PATH "/Users/misikovich/.mchp_packs" CACHE PATH "Path to the root of a pack repository.")
+set(PACK_REPO_PATH "C:/Users/Apollo Prog/.mchp_packs" CACHE PATH "Path to the root of a pack repository.")
 
 function(pwr_probe_test_default_default_XC16_assemble_rule target)
     set(options

@@ -8,6 +8,7 @@
 #define __DISPLAY_HW_H
 
 #include "fonts.h"
+#include <stddef.h>
 
 
 /*
@@ -15,30 +16,29 @@
  * Feature Select
 */
 
-/* SPI port selection */
-#define ST_SPI_PORT hspi1
-extern SPI_HandleTypeDef ST7789_SPI_PORT;
-
 /* Pin connection*/
-#define ST_HW_RST_PORT ST7789_RST_GPIO_Port
-#define ST_HW_RST_PIN  ST7789_RST_Pin
 
-#define ST_HW_DC_PORT  ST7789_DC_GPIO_Port
-#define ST_HW_DC_PIN   ST7789_DC_Pin
+static const GPIO ST_HW_RST = { &LATC, &PORTC, &TRISC, NULL, 1u << 6 };
+static const GPIO ST_HW_DC  = { &LATA, &PORTA, &TRISA, NULL, 1u << 7 };
+static const GPIO ST_HW_CS  = { &LATD, &PORTD, &TRISD, NULL, 1u << 5 };
+static const GPIO ST_HW_SCK = { &LATC, &PORTC, &TRISC, NULL, 1u << 3 };
+static const GPIO ST_HW_MOSI = { &LATA, &PORTA, &TRISA, &ANSELA, 1u << 4 };
+static const GPIO ST_HW_MISO = { &LATA, &PORTA, &TRISA, NULL, 1u << 9 };
+static const GPIO ST_HW_TE  = { &LATG, &PORTG, &TRISG, NULL, 1u << 9 };
+static const GPIO ST_HW_BLK = { &LATC, &PORTC, &TRISC, NULL, 1u << 7 };
 
 /* Uncomment enables CS ctl*/
 #define ST_CONF_ENABLE_CS_CTL
-#define ST_HW_CS_PORT  ST7789_CS_GPIO_Port
-#define ST_HW_CS_PIN   ST7789_CS_Pin
 
 /* Uncomment enables backlight ctl */
 #define ST_CONF_ENABLE_BLK_CTL
-#define ST_BLK_PORT
-#define ST_BLK_PIN
 
 /* Uncomment enables Direct Memory Access */
-//#define USE_DMA
+#define USE_DMA
+#define ST_CONF_DMA_FB_ROWS 8
 
+/* Keep RGB565 color fills as explicit high-byte/low-byte SPI writes. */
+/* #define ST_CONF_USE_SPI16_COLOR_FILL */
 
 /*
  * Display Configuration
@@ -48,11 +48,10 @@ extern SPI_HandleTypeDef ST7789_SPI_PORT;
 
 #define ST_CONF_WIDTH 240
 #define ST_CONF_HEIGHT 240
+
 /* Display rotation (0-3) */
+/* 240x240 default: 2 */
 #define ST_CONF_ROTATION 0
-//#define CONF_ROTATION 1
-//#define CONF_ROTATION 2				// 240x240 normal
-//#define CONF_ROTATION 3
 
 #if ST_CONF_ROTATION == 0
     #define ST_X_SHIFT 0
@@ -122,8 +121,8 @@ extern SPI_HandleTypeDef ST7789_SPI_PORT;
 #define ST_CMD_MADCTL  0x36
 
 /* Advanced options */
-#define ST_CMD_COLOR_MODE_18bit 0x66    //  RGB666 (18bit)
-#define ST_CMD_COLOR_MODE_16bit 0x55    //  RGB565 (16bit)
+#define ST_CMD_COLOR_MODE_18bit 0x66    /* RGB666 (18bit) */
+#define ST_CMD_COLOR_MODE_16bit 0x55    /* RGB565 (16bit) */
 
 /**
  * Memory Data Access Control Register (0x36H)
@@ -150,15 +149,15 @@ extern SPI_HandleTypeDef ST7789_SPI_PORT;
 
 
 /* Basic operations */
-#define ST_OP_RST_CLR() HAL_GPIO_WritePin(ST7789_RST_PORT, ST7789_RST_PIN, GPIO_PIN_RESET)
-#define ST_OP_RST_SET() HAL_GPIO_WritePin(ST7789_RST_PORT, ST7789_RST_PIN, GPIO_PIN_SET)
+#define ST_OP_RST_CLR() gpio_dw(&ST_HW_RST, 0u)
+#define ST_OP_RST_SET() gpio_dw(&ST_HW_RST, 1u)
 
-#define ST_OP_DC_CLR() HAL_GPIO_WritePin(ST7789_DC_PORT, ST7789_DC_PIN, GPIO_PIN_RESET)
-#define ST_OP_DC_SET() HAL_GPIO_WritePin(ST7789_DC_PORT, ST7789_DC_PIN, GPIO_PIN_SET)
+#define ST_OP_DC_CLR() gpio_dw(&ST_HW_DC, 0u)
+#define ST_OP_DC_SET() gpio_dw(&ST_HW_DC, 1u)
 
 #ifdef ST_CONF_ENABLE_CS_CTL
-    #define ST_OP_SELECT() HAL_GPIO_WritePin(ST7789_CS_PORT, ST7789_CS_PIN, GPIO_PIN_RESET)
-    #define ST_OP_UNSELECT() HAL_GPIO_WritePin(ST7789_CS_PORT, ST7789_CS_PIN, GPIO_PIN_SET)
+    #define ST_OP_SELECT() gpio_dw(&ST_HW_CS, 0u)
+    #define ST_OP_UNSELECT() gpio_dw(&ST_HW_CS, 1u)
 #else
     #define ST_OP_SELECT() asm("nop")
     #define ST_OP_UNSELECT() asm("nop")
