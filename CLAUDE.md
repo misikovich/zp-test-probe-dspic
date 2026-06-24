@@ -22,13 +22,24 @@ $ninja = "C:\Users\Apollo Prog\.mplab\app-finder\apps\ninja\v1.13.2\ninja.exe"
 & $ninja -C "C:\Users\Apollo Prog\MPLABProjects\pwr-probe-test\_build\pwr-probe-test\default"
 ```
 
-**CLI single-file compile check:**
+**CLI single-file compile check (Windows):**
 ```
 "c:\Program Files\Microchip\xc16\v2.10\bin\xc16-gcc.exe" \
   -DXPRJ_default=default -D__DEBUG \
   -D__PIC24EP256MC206__ -D__24EP256MC206__ -D__PIC24E__ \
   -x c -g -mcpu=24EP256MC206 -O0 -msmart-io=1 -Wall -msfr-warn=off \
   "-mdfp=C:/Users/Apollo Prog/.mchp_packs/Microchip/dsPIC33E-GM-GP-MC-GU-MU_DFP/1.6.297/xc16" \
+  -c src/main.c
+```
+
+**CLI single-file compile check (macOS):**
+```bash
+/Applications/microchip/xc16/v2.10/bin/xc16-gcc \
+  -DXPRJ_default=default -D__DEBUG \
+  -D__PIC24EP256MC206__ -D__24EP256MC206__ -D__PIC24E__ \
+  -x c -g -mcpu=24EP256MC206 -O0 -msmart-io=1 -Wall -msfr-warn=off \
+  -mdfp=/Users/misikovich/.mchp_packs/Microchip/dsPIC33E-GM-GP-MC-GU-MU_DFP/1.6.297/xc16 \
+  -I. -Isrc -IFreeRTOS/Source/include -IFreeRTOS/Source/portable/MPLAB/PIC24_dsPIC \
   -c src/main.c
 ```
 No output = clean. Errors go to stderr.
@@ -55,19 +66,20 @@ Script syntax: `Device PIC24EP256MC206` / `Hwtool SIM` / `Program "path.elf"` / 
 
 ### Source layout
 - `src/` — application code (`main.c` entry point)
-- `src/st7789v.c/.h` — project-facing ST7789V display API and PIC24 SPI/GPIO backend
+- `src/display_hw.c/.h` — active ST7789V display driver (polled SPI, PIC24 hardware)
+- `src/st7789v.c.deprecated/.h.deprecated` — old display API (superseded by `display_hw`)
 - `FreeRTOS/Source/` — kernel (do not modify except portmacro.h and port.c)
 - `FreeRTOSConfig.h` — at project root; kernel tuning for this device
 - `FreeRTOS/Source/portable/MPLAB/PIC24_dsPIC/` — PIC24E port (`portasm_PIC24.S`, `port.c`, `portmacro.h`)
 
-### `src/amazing_utils.h` — shared utilities
+### `src/hardware.h` — shared utilities
 Single utility header included by all source files. Defines:
-- **Type aliases:** `u8`, `u16`, `u32` (mapped to `uint8/16/32_t`)
+- **Type aliases:** `u8`, `u16`, `u32` (mapped to `uint8/16/32_t`), `bool`
 - **Macros:** `forever` (`for(;;)`), `unused(v)` (`(void)(v)`), `vTaskDelayMS(ms)` (`vTaskDelay(pdMS_TO_TICKS(ms))`)
-- **Pin abstraction** (see below)
+- **GPIO/ADC structs and inline helpers:** `GPIO`, `ANPI`, `ANPO`; see below
 
 ### Pin abstraction (`src/`)
-`Pin` struct holds pointers to the actual LAT/TRIS/ANSEL registers + a bitmask — not copies of values. All GPIO ops go through `pin_high()`, `pin_low()`, `pin_toggle()`, `pin_output()`, `pin_set()`, `pin_ansel()`. ANSEL field is `NULL` for digital-only pins (safe no-op).
+`GPIO` struct holds pointers to the actual LAT/PORT/TRIS/ANSEL registers + a bitmask — not copies of values. All GPIO ops go through `gpio_dw()`, `gpio_dr()`, `gpio_init_dw()`, `gpio_init_dr()`. ANSEL field is `NULL` for digital-only pins (safe no-op).
 
 ### FreeRTOS configuration
 - Timer1 tick at 1 ms (`configTICK_RATE_HZ = 1000`, PR1 = 460 for default Fcy/8)
@@ -89,10 +101,12 @@ The MPLAB extension regenerates `cmake/pwr-probe-test/default/CMakeLists.txt` an
 
 | Path | Purpose |
 |------|---------|
-| `.vscode/pwr-probe-test.mplab.json` | MPLAB project config — do not delete; uses `**/*` glob to pick up all source files |
+| `.vscode/pwr-probe-test.mplab.json` | MPLAB project config (Windows) — do not delete; uses `**/*` glob to pick up all source files |
+| `.vscode/c_cpp_properties.json` | cpptools IntelliSense config (macOS) — XC16 include paths and device defines |
 | `cmake/pwr-probe-test/default/user.cmake` | Build customisation — debug config |
 | `cmake/pwr-probe-test/default.production/user.cmake` | Build customisation — production config (keep in sync with debug) |
-| `src/st7789v.c/.h` | ST7789V display API and PIC24 SPI/GPIO backend |
+| `src/display_hw.c/.h` | Active ST7789V display driver (polled SPI) |
+| `src/hardware.h` | Shared type aliases, macros, GPIO/ADC structs and inline helpers |
 | `FreeRTOS/Source/portable/MPLAB/PIC24_dsPIC/portmacro.h` | Patched: adds `#include <xc.h>` for `SET_CPU_IPL`; guards `SIZE_MAX` |
 | `FreeRTOS/Source/portable/MPLAB/PIC24_dsPIC/port.c` | Patched: adds `#include <xc.h>` + `<libpic30.h>` for SFR access |
 | `out/` | Build artifacts (ELF, HEX) |

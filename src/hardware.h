@@ -9,7 +9,7 @@ typedef uint16_t u16;
 typedef uint8_t u8;
 typedef uint8_t bool;
 
-#define vTaskDelayMS(ms) vTaskDelay(pdMS_TO_TICKS((ms)))
+#define task_hold(ms) vTaskDelay(pdMS_TO_TICKS((ms)))
 #define unused(v) (void)(v)
 #define forever for (;;)
 
@@ -120,12 +120,6 @@ static inline void anpo_aw(const ANPO *pin, u16 value) {
     if (pin->reg) {
         *pin->reg = value;
     }
-}
-
-static inline void gpio_init(unsigned int *tris, unsigned int *ansel, unsigned int *lat) {
-    unused(tris);
-    unused(ansel);
-    unused(lat);
 }
 
 #endif /* HARDWARE_H */

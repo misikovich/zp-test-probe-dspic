@@ -5,7 +5,7 @@
 
 static void st_delay_ms(u16 ms)
 {
-	vTaskDelayMS(ms);
+	task_hold(ms);
 }
 
 static void st_gpio_init(void)

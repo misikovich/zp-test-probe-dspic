@@ -1,5 +1,7 @@
 #include <xc.h>
 #include <stddef.h>
+#include "FreeRTOS.h"
+#include "task.h"
 #include "hardware.h"
 #include "pwm.h"
 
@@ -46,20 +48,20 @@ void rgbw_set_w(u16 duty) {
 
 void rgbw_hold_r(u16 duty, u32 delay_ms) {
     rgbw_set_r(duty);
-    vTaskDelayMS(delay_ms);
+    task_hold(delay_ms);
 }
 
 void rgbw_hold_g(u16 duty, u32 delay_ms) {
     rgbw_set_g(duty);
-    vTaskDelayMS(delay_ms);
+    task_hold(delay_ms);
 }
 
 void rgbw_hold_b(u16 duty, u32 delay_ms) {
     rgbw_set_b(duty);
-    vTaskDelayMS(delay_ms);
+    task_hold(delay_ms);
 }
 
 void rgbw_hold_w(u16 duty, u32 delay_ms) {
     rgbw_set_w(duty);
-    vTaskDelayMS(delay_ms);
+    task_hold(delay_ms);
 }
