@@ -9,6 +9,8 @@
 #include "pwm.h"
 #include "display_hw.h"
 
+#define I_DONT_LIKE_MICROCHIP_SOFTWARE_H 1ul
+
 /* Configuration bits */
 #pragma config FNOSC    = FRC
 #pragma config IESO     = OFF
