@@ -15,6 +15,8 @@
  */
 
 #define PWM_DUTY_MAX 1000u
+#define ON PWM_DUTY_MAX
+#define OFF 0u
 
 typedef struct {
     GPIO gpio;
