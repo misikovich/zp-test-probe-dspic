@@ -33,9 +33,8 @@ static const GPIO ST_HW_BLK = { &LATC, &PORTC, &TRISC, NULL, 1u << 7 };
 /* Uncomment enables backlight ctl */
 #define ST_CONF_ENABLE_BLK_CTL
 
-/* Uncomment enables Direct Memory Access */
-#define USE_DMA
-#define ST_CONF_DMA_FB_ROWS 8
+/* DMA path disabled: polled SPI is the known-good display path. */
+/* #define USE_DMA */
 
 /* Keep RGB565 color fills as explicit high-byte/low-byte SPI writes. */
 /* #define ST_CONF_USE_SPI16_COLOR_FILL */

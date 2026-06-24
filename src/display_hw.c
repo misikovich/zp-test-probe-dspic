@@ -56,6 +56,20 @@ static void st_spi_init(void)
     SPI1STATbits.SPIEN = 1u;
 }
 
+static void st_spi_drop_rx(void)
+{
+    volatile u16 dummy;
+
+    while (SPI1STATbits.SPIRBF) {
+        dummy = SPI1BUF;
+    }
+    unused(dummy);
+
+    if (SPI1STATbits.SPIROV) {
+        SPI1STATbits.SPIROV = 0u;
+    }
+}
+
 static void st_spi_write_u8(u8 value)
 {
     volatile u16 dummy;
@@ -82,17 +96,16 @@ static void st_spi_write_u8(u8 value)
  * These let a caller assert CS + set DC once and push many bytes without
  * re-toggling CS/DC per byte (the big win for text and address windows).
  *
- * Each byte uses the proven full handshake: wait for TX room, write, wait for
- * the byte to fully shift out (SPIRBF), drain RX. This deliberately does NOT
- * try to overlap byte N+1 with byte N: on this part a transient RX overflow
- * halts the SPI module, which hung the bus and blanked the display. Correct
- * and bus-rate-limited beats fast-but-dead.
+ * Each byte uses the full handshake: wait for TX room, write, wait for RX,
+ * drain RX. It is less glamorous than DMA, but it is the known-good path on
+ * the live panel and avoids SPIROV stalls.
  *
  * Usage: st_spi_stream_begin() -> st_spi_stream_byte() xN -> st_spi_stream_flush().
  * Not reentrant: the display is driven from a single task and CS is shared.
  */
 static void st_spi_stream_begin(void)
 {
+    st_spi_drop_rx();
 }
 
 static void st_spi_stream_byte(u8 value)
@@ -118,6 +131,10 @@ static void st_spi_stream_flush(void)
 
 static void st_spi_write(const u8 *data, u32 len)
 {
+    if ((data == NULL) || (len == 0UL)) {
+        return;
+    }
+
     st_spi_stream_begin();
     while (len > 0UL) {
         st_spi_stream_byte(*data);
@@ -165,17 +182,37 @@ static void st_spi_write_color(u16 color, u32 count)
 	u8 hi;
 	u8 lo;
 
+    if (count == 0UL) {
+        return;
+    }
+
 	hi = (u8)(color >> 8u);
 	lo = (u8)(color & 0x00FFu);
 
-	st_spi_stream_begin();
-	while (count > 0UL) {
-		count--;
-		st_spi_stream_byte(hi);
-		st_spi_stream_byte(lo);
-	}
-	st_spi_stream_flush();
+    st_spi_stream_begin();
+    while (count > 0UL) {
+        count--;
+        st_spi_stream_byte(hi);
+        st_spi_stream_byte(lo);
+    }
+    st_spi_stream_flush();
 	#endif
+}
+
+static void st_pixel_stream_reset(void)
+{
+    st_spi_stream_begin();
+}
+
+static void st_pixel_stream_flush(void)
+{
+    st_spi_stream_flush();
+}
+
+static void st_pixel_stream_put(u16 color)
+{
+    st_spi_stream_byte((u8)(color >> 8u));
+    st_spi_stream_byte((u8)(color & 0x00FFu));
 }
 
 
@@ -220,6 +257,18 @@ static void st_write_small_data(u8 data)
 	ST_OP_UNSELECT();
 }
 
+static void st_write_command_data(u8 cmd, const u8 *data, u16 len)
+{
+    ST_OP_SELECT();
+    ST_OP_DC_CLR();
+    st_spi_write_u8(cmd);
+    if ((data != NULL) && (len > 0u)) {
+        ST_OP_DC_SET();
+        st_spi_write(data, len);
+    }
+    ST_OP_UNSELECT();
+}
+
 /**
  * @brief Set the rotation direction of the display
  * @param m -> rotation parameter(please refer it in display_hw.h)
@@ -227,23 +276,26 @@ static void st_write_small_data(u8 data)
  */
 void st_set_rotation(uint8_t m)
 {
-	st_write_command(ST_CMD_MADCTL);	/* MADCTL */
+    u8 madctl;
+
 	switch (m) {
 	case 0:
-		st_write_small_data(ST_MADCTL_MX | ST_MADCTL_MY | ST_MADCTL_RGB);
+		madctl = ST_MADCTL_MX | ST_MADCTL_MY | ST_MADCTL_RGB;
 		break;
 	case 1:
-		st_write_small_data(ST_MADCTL_MY | ST_MADCTL_MV | ST_MADCTL_RGB);
+		madctl = ST_MADCTL_MY | ST_MADCTL_MV | ST_MADCTL_RGB;
 		break;
 	case 2:
-		st_write_small_data(ST_MADCTL_RGB);
+		madctl = ST_MADCTL_RGB;
 		break;
 	case 3:
-		st_write_small_data(ST_MADCTL_MX | ST_MADCTL_MV | ST_MADCTL_RGB);
+		madctl = ST_MADCTL_MX | ST_MADCTL_MV | ST_MADCTL_RGB;
 		break;
 	default:
-		break;
+		return;
 	}
+
+    st_write_command_data(ST_CMD_MADCTL, &madctl, 1u);
 }
 
 /**
@@ -251,16 +303,12 @@ void st_set_rotation(uint8_t m)
  * @param xi&yi -> coordinates of window
  * @return none
  */
-static void st_set_address_window(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1)
+static void st_set_address_window_selected(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1)
 {
 	uint16_t x_start = x0 + ST_X_SHIFT, x_end = x1 + ST_X_SHIFT;
 	uint16_t y_start = y0 + ST_Y_SHIFT, y_end = y1 + ST_Y_SHIFT;
 	uint8_t caset[] = {x_start >> 8, x_start & 0xFF, x_end >> 8, x_end & 0xFF};
 	uint8_t raset[] = {y_start >> 8, y_start & 0xFF, y_end >> 8, y_end & 0xFF};
-
-	/* Hold CS low for the whole CASET/RASET/RAMWR sequence instead of
-	 * toggling it around each sub-command (was 3 CS pairs, now 1). */
-	ST_OP_SELECT();
 
 	ST_OP_DC_CLR();
 	st_spi_write_u8(ST_CMD_CASET);
@@ -274,7 +322,25 @@ static void st_set_address_window(uint16_t x0, uint16_t y0, uint16_t x1, uint16_
 
 	ST_OP_DC_CLR();
 	st_spi_write_u8(ST_CMD_RAMWR);
+}
 
+static void st_set_address_window(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1)
+{
+	ST_OP_SELECT();
+    st_set_address_window_selected(x0, y0, x1, y1);
+	ST_OP_UNSELECT();
+}
+
+static void st_begin_pixels(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1)
+{
+	ST_OP_SELECT();
+    st_set_address_window_selected(x0, y0, x1, y1);
+    ST_OP_DC_SET();
+}
+
+static void st_end_pixels(void)
+{
+    st_spi_stream_flush();
 	ST_OP_UNSELECT();
 }
 
@@ -349,11 +415,9 @@ void st_init(void)
  */
 void st_fill_color(uint16_t color)
 {
-	st_set_address_window(0, 0, ST_CONF_WIDTH - 1, ST_CONF_HEIGHT - 1);
-	ST_OP_SELECT();
-	ST_OP_DC_SET();
+	st_begin_pixels(0, 0, ST_CONF_WIDTH - 1, ST_CONF_HEIGHT - 1);
 	st_spi_write_color(color, (u32)ST_CONF_WIDTH * (u32)ST_CONF_HEIGHT);
-	ST_OP_UNSELECT();
+	st_end_pixels();
 }
 
 /**
@@ -364,14 +428,13 @@ void st_fill_color(uint16_t color)
  */
 void st_draw_pixel(uint16_t x, uint16_t y, uint16_t color)
 {
-	if ((x < 0) || (x >= ST_CONF_WIDTH) ||
-		 (y < 0) || (y >= ST_CONF_HEIGHT))	return;
+	if ((x >= ST_CONF_WIDTH) || (y >= ST_CONF_HEIGHT)) {
+        return;
+    }
 	
-	st_set_address_window(x, y, x, y);
-	{
-		uint8_t data[] = {color >> 8, color & 0xFF};
-		st_write_data(data, sizeof(data));	/* st_write_data manages CS */
-	}
+    st_begin_pixels(x, y, x, y);
+    st_spi_write_color(color, 1UL);
+    st_end_pixels();
 }
 
 /**
@@ -384,16 +447,34 @@ void st_draw_pixel(uint16_t x, uint16_t y, uint16_t color)
 void st_fill(uint16_t xSta, uint16_t ySta, uint16_t xEnd, uint16_t yEnd, uint16_t color)
 {
 	u32 count;
+    uint16_t swap;
 
-	if ((xEnd < 0) || (xEnd >= ST_CONF_WIDTH) ||
-		 (yEnd < 0) || (yEnd >= ST_CONF_HEIGHT))	return;
+    if (xSta > xEnd) {
+        swap = xSta;
+        xSta = xEnd;
+        xEnd = swap;
+    }
+    if (ySta > yEnd) {
+        swap = ySta;
+        ySta = yEnd;
+        yEnd = swap;
+    }
+
+    if ((xSta >= ST_CONF_WIDTH) || (ySta >= ST_CONF_HEIGHT)) {
+        return;
+    }
+
+    if (xEnd >= ST_CONF_WIDTH) {
+        xEnd = ST_CONF_WIDTH - 1u;
+    }
+    if (yEnd >= ST_CONF_HEIGHT) {
+        yEnd = ST_CONF_HEIGHT - 1u;
+    }
 
 	count = ((u32)xEnd - (u32)xSta + 1UL) * ((u32)yEnd - (u32)ySta + 1UL);
-	st_set_address_window(xSta, ySta, xEnd, yEnd);
-	ST_OP_SELECT();
-	ST_OP_DC_SET();
+	st_begin_pixels(xSta, ySta, xEnd, yEnd);
 	st_spi_write_color(color, count);
-	ST_OP_UNSELECT();
+	st_end_pixels();
 }
 
 /**
@@ -404,8 +485,8 @@ void st_fill(uint16_t xSta, uint16_t ySta, uint16_t xEnd, uint16_t yEnd, uint16_
  */
 void st_draw_pixel_4px(uint16_t x, uint16_t y, uint16_t color)
 {
-	if ((x <= 0) || (x > ST_CONF_WIDTH) ||
-		 (y <= 0) || (y > ST_CONF_HEIGHT))	return;
+	if ((x == 0u) || (x >= (ST_CONF_WIDTH - 1u)) ||
+		 (y == 0u) || (y >= (ST_CONF_HEIGHT - 1u)))	return;
 	st_fill(x - 1, y - 1, x + 1, y + 1, color);	/* st_fill manages CS */
 }
 
@@ -418,70 +499,95 @@ void st_draw_pixel_4px(uint16_t x, uint16_t y, uint16_t color)
  */
 void gfx_draw_line(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1,
         uint16_t color) {
-	uint16_t swap;
-    uint16_t steep;
+	int16_t ix0;
+    int16_t iy0;
+    int16_t ix1;
+    int16_t iy1;
+    int16_t swap;
+    int16_t steep;
+    int16_t span_start;
+    int16_t span_axis;
+    int16_t dx;
+    int16_t dy;
+    int16_t err;
+    int16_t ystep;
+
+    ix0 = (int16_t)x0;
+    iy0 = (int16_t)y0;
+    ix1 = (int16_t)x1;
+    iy1 = (int16_t)y1;
 
     /* Axis-aligned fast paths: stream the run as a fill instead of
      * setting a fresh address window per pixel. */
-    if (y0 == y1) {
-        if (x0 <= x1) st_fill(x0, y0, x1, y1, color);
-        else          st_fill(x1, y0, x0, y1, color);
+    if (iy0 == iy1) {
+        if (ix0 <= ix1) st_fill((u16)ix0, (u16)iy0, (u16)ix1, (u16)iy1, color);
+        else            st_fill((u16)ix1, (u16)iy0, (u16)ix0, (u16)iy1, color);
         return;
     }
-    if (x0 == x1) {
-        if (y0 <= y1) st_fill(x0, y0, x1, y1, color);
-        else          st_fill(x0, y1, x1, y0, color);
+    if (ix0 == ix1) {
+        if (iy0 <= iy1) st_fill((u16)ix0, (u16)iy0, (u16)ix1, (u16)iy1, color);
+        else            st_fill((u16)ix0, (u16)iy1, (u16)ix1, (u16)iy0, color);
         return;
     }
 
-    steep = ABS(y1 - y0) > ABS(x1 - x0);
+    steep = ABS(iy1 - iy0) > ABS(ix1 - ix0);
     if (steep) {
-		swap = x0;
-		x0 = y0;
-		y0 = swap;
+		swap = ix0;
+		ix0 = iy0;
+		iy0 = swap;
 
-		swap = x1;
-		x1 = y1;
-		y1 = swap;
+		swap = ix1;
+		ix1 = iy1;
+		iy1 = swap;
         /* _swap_int16_t(x0, y0); */
         /* _swap_int16_t(x1, y1); */
     }
 
-    if (x0 > x1) {
-		swap = x0;
-		x0 = x1;
-		x1 = swap;
+    if (ix0 > ix1) {
+		swap = ix0;
+		ix0 = ix1;
+		ix1 = swap;
 
-		swap = y0;
-		y0 = y1;
-		y1 = swap;
+		swap = iy0;
+		iy0 = iy1;
+		iy1 = swap;
         /* _swap_int16_t(x0, x1); */
         /* _swap_int16_t(y0, y1); */
     }
 
-    int16_t dx, dy;
-    dx = x1 - x0;
-    dy = ABS(y1 - y0);
+    dx = ix1 - ix0;
+    dy = ABS(iy1 - iy0);
+    err = dx / 2;
 
-    int16_t err = dx / 2;
-    int16_t ystep;
-
-    if (y0 < y1) {
+    if (iy0 < iy1) {
         ystep = 1;
     } else {
         ystep = -1;
     }
 
-    for (; x0<=x1; x0++) {
-        if (steep) {
-            st_draw_pixel(y0, x0, color);
-        } else {
-            st_draw_pixel(x0, y0, color);
-        }
+    span_start = ix0;
+    span_axis = iy0;
+
+    for (; ix0 <= ix1; ix0++) {
         err -= dy;
         if (err < 0) {
-            y0 += ystep;
+            if (steep) {
+                st_fill((u16)span_axis, (u16)span_start, (u16)span_axis, (u16)ix0, color);
+            } else {
+                st_fill((u16)span_start, (u16)span_axis, (u16)ix0, (u16)span_axis, color);
+            }
+            iy0 = (int16_t)(iy0 + ystep);
             err += dx;
+            span_start = (int16_t)(ix0 + 1);
+            span_axis = iy0;
+        }
+    }
+
+    if (span_start <= ix1) {
+        if (steep) {
+            st_fill((u16)span_axis, (u16)span_start, (u16)span_axis, (u16)ix1, color);
+        } else {
+            st_fill((u16)span_start, (u16)span_axis, (u16)ix1, (u16)span_axis, color);
         }
     }
 }
@@ -555,6 +661,8 @@ void gfx_draw_image(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const uint16
 {
 	if ((x >= ST_CONF_WIDTH) || (y >= ST_CONF_HEIGHT))
 		return;
+    if ((data == NULL) || (w == 0u) || (h == 0u))
+        return;
 	if ((x + w - 1) >= ST_CONF_WIDTH)
 		return;
 	if ((y + h - 1) >= ST_CONF_HEIGHT)
@@ -588,36 +696,82 @@ void gfx_invert_colors(uint8_t invert)
 void gfx_draw_char(uint16_t x, uint16_t y, char ch, FontDef font, uint16_t color, uint16_t bgcolor)
 {
 	uint32_t i, b, j;
-	u8 fg_hi = (u8)(color >> 8u);
-	u8 fg_lo = (u8)(color & 0x00FFu);
-	u8 bg_hi = (u8)(bgcolor >> 8u);
-	u8 bg_lo = (u8)(bgcolor & 0x00FFu);
 
-	st_set_address_window(x, y, x + font.width - 1, y + font.height - 1);
+    if ((x >= ST_CONF_WIDTH) || (y >= ST_CONF_HEIGHT) ||
+            (font.width == 0u) || (font.height == 0u)) {
+        return;
+    }
+    if (((u32)x + (u32)font.width) > (u32)ST_CONF_WIDTH) {
+        return;
+    }
+    if (((u32)y + (u32)font.height) > (u32)ST_CONF_HEIGHT) {
+        return;
+    }
+    if ((ch < 32) || (ch > 126)) {
+        ch = '?';
+    }
+
+	st_begin_pixels(x, y, x + font.width - 1u, y + font.height - 1u);
 
 	/* Stream the whole glyph under a single CS assertion instead of
 	 * toggling CS + DC and stalling per pixel (was 2 SPI round-trips and
 	 * 2 GPIO pairs for every pixel). */
-	ST_OP_SELECT();
-	ST_OP_DC_SET();
-	st_spi_stream_begin();
+	st_pixel_stream_reset();
 
 	for (i = 0; i < font.height; i++) {
 		b = font.data[(ch - 32) * font.height + i];
 		for (j = 0; j < font.width; j++) {
 			if ((b << j) & 0x8000) {
-				st_spi_stream_byte(fg_hi);
-				st_spi_stream_byte(fg_lo);
+				st_pixel_stream_put(color);
 			}
 			else {
-				st_spi_stream_byte(bg_hi);
-				st_spi_stream_byte(bg_lo);
+				st_pixel_stream_put(bgcolor);
 			}
 		}
 	}
 
-	st_spi_stream_flush();
-	ST_OP_UNSELECT();
+	st_pixel_stream_flush();
+	st_end_pixels();
+}
+
+static void gfx_draw_string_run(uint16_t x, uint16_t y, const char *str,
+        uint16_t len, FontDef font, uint16_t color, uint16_t bgcolor)
+{
+    uint16_t row;
+    uint16_t col;
+    uint16_t idx;
+    uint16_t run_width;
+    uint16_t bits;
+    char ch;
+
+    if (len == 0u) {
+        return;
+    }
+
+    run_width = (uint16_t)(len * (uint16_t)font.width);
+    st_begin_pixels(x, y, (uint16_t)(x + run_width - 1u),
+            (uint16_t)(y + (uint16_t)font.height - 1u));
+    st_pixel_stream_reset();
+
+    for (row = 0u; row < (uint16_t)font.height; row++) {
+        for (idx = 0u; idx < len; idx++) {
+            ch = str[idx];
+            if ((ch < 32) || (ch > 126)) {
+                ch = '?';
+            }
+            bits = font.data[((uint16_t)(ch - 32) * (uint16_t)font.height) + row];
+            for (col = 0u; col < (uint16_t)font.width; col++) {
+                if ((bits << col) & 0x8000u) {
+                    st_pixel_stream_put(color);
+                } else {
+                    st_pixel_stream_put(bgcolor);
+                }
+            }
+        }
+    }
+
+    st_pixel_stream_flush();
+    st_end_pixels();
 }
 
 /** 
@@ -631,12 +785,19 @@ void gfx_draw_char(uint16_t x, uint16_t y, char ch, FontDef font, uint16_t color
  */
 void gfx_draw_string(uint16_t x, uint16_t y, const char *str, FontDef font, uint16_t color, uint16_t bgcolor)
 {
-	/* gfx_draw_char manages CS per glyph. */
+    uint16_t chars_fit;
+    uint16_t run_len;
+    uint16_t run_width;
+
+    if ((str == NULL) || (font.width == 0u) || (font.height == 0u)) {
+        return;
+    }
+
 	while (*str) {
-		if (x + font.width >= ST_CONF_WIDTH) {
+		if (((u32)x + (u32)font.width) > (u32)ST_CONF_WIDTH) {
 			x = 0;
 			y += font.height;
-			if (y + font.height >= ST_CONF_HEIGHT) {
+			if (((u32)y + (u32)font.height) > (u32)ST_CONF_HEIGHT) {
 				break;
 			}
 
@@ -646,9 +807,20 @@ void gfx_draw_string(uint16_t x, uint16_t y, const char *str, FontDef font, uint
 				continue;
 			}
 		}
-		gfx_draw_char(x, y, *str, font, color, bgcolor);
-		x += font.width;
-		str++;
+
+        chars_fit = (uint16_t)(((u32)ST_CONF_WIDTH - (u32)x) / (u32)font.width);
+        run_len = 0u;
+        while ((str[run_len] != '\0') && (run_len < chars_fit)) {
+            run_len++;
+        }
+        if (run_len == 0u) {
+            break;
+        }
+
+        gfx_draw_string_run(x, y, str, run_len, font, color, bgcolor);
+        run_width = (uint16_t)(run_len * (uint16_t)font.width);
+		x = (uint16_t)(x + run_width);
+		str += run_len;
 	}
 }
 
@@ -662,8 +834,8 @@ void gfx_draw_string(uint16_t x, uint16_t y, const char *str, FontDef font, uint
 void gfx_draw_filled_rectangle(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t color)
 {
 	/* Check input parameters */
-	if (x >= ST_CONF_WIDTH ||
-		y >= ST_CONF_HEIGHT) {
+	if ((x >= ST_CONF_WIDTH) || (y >= ST_CONF_HEIGHT) ||
+        (w == 0u) || (h == 0u)) {
 		/* Return error */
 		return;
 	}
@@ -676,7 +848,7 @@ void gfx_draw_filled_rectangle(uint16_t x, uint16_t y, uint16_t w, uint16_t h, u
 		h = ST_CONF_HEIGHT - y;
 	}
 
-	st_fill(x, y, x + w, y + h, color);
+	st_fill(x, y, (uint16_t)(x + w - 1u), (uint16_t)(y + h - 1u), color);
 }
 
 /** 
