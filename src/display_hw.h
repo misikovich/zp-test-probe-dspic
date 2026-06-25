@@ -1,9 +1,3 @@
-/*
-	IN PROCESS OF PORTING, DO NOT TOUCH
-	IN PROCESS OF PORTING, DO NOT TOUCH
-	IN PROCESS OF PORTING, DO NOT TOUCH
-*/
-
 #ifndef __DISPLAY_HW_H
 #define __DISPLAY_HW_H
 
@@ -50,7 +44,7 @@ static const GPIO ST_HW_BLK = { &LATC, &PORTC, &TRISC, NULL, 1u << 7 };
 
 /* Display rotation (0-3) */
 /* 240x240 default: 2 */
-#define ST_CONF_ROTATION 0
+#define ST_CONF_ROTATION 1
 
 #if ST_CONF_ROTATION == 0
     #define ST_X_SHIFT 0

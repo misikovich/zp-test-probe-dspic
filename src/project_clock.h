@@ -32,22 +32,5 @@
 #endif
 #endif
 
-static void prvInitClock(void)
-{
-    #if PROJECT_USE_PLL
-        CLKDIVbits.FRCDIV = 0u;
-        CLKDIVbits.PLLPRE = (uint16_t)PROJECT_PLLPRE_BITS;
-        CLKDIVbits.PLLPOST = (uint16_t)PROJECT_PLLPOST_BITS;
-        PLLFBDbits.PLLDIV = (uint16_t)PROJECT_PLLFBD_BITS;
-
-        __builtin_write_OSCCONH(PROJECT_OSC_FRCPLL_NOSC);
-        __builtin_write_OSCCONL((uint8_t)(OSCCON | 0x0001u));
-
-        while (OSCCONbits.COSC != PROJECT_OSC_FRCPLL_NOSC) {
-        }
-        while (!OSCCONbits.LOCK) {
-        }
-    #endif
-}
 
 #endif /* PROJECT_CLOCK_H */

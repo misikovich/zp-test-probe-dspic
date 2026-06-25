@@ -7,7 +7,7 @@
 
 #define LED_PWM_FREQ    1000u
 #define LED_MAX_R       150u
-#define LED_MAX_G       200u
+#define LED_MAX_G       100u
 #define LED_MAX_B       150u
 #define LED_MAX_W       100u
 

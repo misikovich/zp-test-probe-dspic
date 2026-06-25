@@ -10,6 +10,7 @@ typedef uint8_t u8;
 typedef uint8_t bool;
 
 #define task_hold(ms) vTaskDelay(pdMS_TO_TICKS((ms)))
+#define func_hold(f, ms) do { f; task_hold(ms); } while (0);
 #define unused(v) (void)(v)
 #define forever for (;;)
 
