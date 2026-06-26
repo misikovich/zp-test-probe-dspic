@@ -178,6 +178,7 @@ void gfx_invert_colors(uint8_t invert);
 
 /* Text functions. */
 void gfx_draw_char(uint16_t x, uint16_t y, char ch, FontDef font, uint16_t color, uint16_t bgcolor);
+void gfx_draw_text(uint16_t x, uint16_t y, const char *str, FontDef font, uint16_t color, uint16_t bgcolor, uint16_t reserve_chars);
 void gfx_draw_string(uint16_t x, uint16_t y, const char *str, FontDef font, uint16_t color, uint16_t bgcolor);
 
 /* Extented Graphical functions. */

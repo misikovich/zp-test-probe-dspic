@@ -65,7 +65,7 @@ Script syntax: `Device PIC24EP256MC206` / `Hwtool SIM` / `Program "path.elf"` / 
 ## Architecture
 
 ### Source layout
-- `src/` — application code (`main.c` entry point)
+- `src/` — application code (`main.c` entry point: config bits, `prvInitClock`/`prvInitHardware`, then creates the FreeRTOS tasks — currently `Heartbeat`, `Display`, `Motor_TEST`, `Motor_Poll` — and starts the scheduler)
 - `src/display_hw.c/.h` — active ST7789V display driver (polled SPI, PIC24 hardware)
 - `src/st7789v.c.deprecated/.h.deprecated` — old display API (superseded by `display_hw`)
 - `FreeRTOS/Source/` — kernel (do not modify except portmacro.h and port.c)
@@ -74,12 +74,23 @@ Script syntax: `Device PIC24EP256MC206` / `Hwtool SIM` / `Program "path.elf"` / 
 
 ### `src/hardware.h` — shared utilities
 Single utility header included by all source files. Defines:
-- **Type aliases:** `u8`, `u16`, `u32` (mapped to `uint8/16/32_t`), `bool`
-- **Macros:** `forever` (`for(;;)`), `unused(v)` (`(void)(v)`), `vTaskDelayMS(ms)` (`vTaskDelay(pdMS_TO_TICKS(ms))`)
+- **Type aliases:** `u8`, `u16`, `u32` (mapped to `uint8/16/32_t`), `bool` (= `uint8_t`)
+- **Macros:** `forever` (`for(;;)`), `unused(v)` (`(void)(v)`), `task_hold(ms)` (`vTaskDelay(pdMS_TO_TICKS(ms))`), `func_hold(f, ms)` (run `f` then `task_hold(ms)`)
 - **GPIO/ADC structs and inline helpers:** `GPIO`, `ANPI`, `ANPO`; see below
 
 ### Pin abstraction (`src/`)
 `GPIO` struct holds pointers to the actual LAT/PORT/TRIS/ANSEL registers + a bitmask — not copies of values. All GPIO ops go through `gpio_dw()`, `gpio_dr()`, `gpio_init_dw()`, `gpio_init_dr()`. ANSEL field is `NULL` for digital-only pins (safe no-op).
+
+ADC pins use `ANPI` (analog-in: `GPIO` + `adc_ch`) and `ANPO` (analog-out via a duty register: `GPIO` + `reg` + `max`). `anpi_ar()` does a blocking single-channel 12-bit read (`adc1_init()` configures AD1 for auto-convert, manual sample); `anpo_aw()` writes a clamped value to the pin's register.
+
+### Application modules (`src/`)
+Hardware-test drivers layered on the pin/PWM/ADC primitives. Each `*_init()` is called from `prvInitHardware()` in `main.c`.
+- **`pwm.c/.h`** — edge-aligned PWM on OC1–OC4, all sharing **Timer2** (Timer1 belongs to the FreeRTOS tick). `PwmPin` = `GPIO` + RP number + OC channel (1–4). Duty is `0..PWM_DUTY_MAX` (1000); `ON`/`OFF` alias the extremes. Deliberately simple — LEDs and basic DC drivers, not FOC/complementary control.
+- **`rgbw.c/.h`** — RGBW status LED on top of `pwm`. `rgbw_set_{r,g,b,w}(duty)` sets a channel; `rgbw_hold_{...}(duty, ms)` sets then `task_hold`s.
+- **`motor.c/.h`** — lock motor driver + current sense. `mtr_drive(dir)`/`mtr_hold(dir, ms)` with `enum mtr_drive_dir { STOP, LOCK, UNLOCK }`. `mtr_poll_sense_raw()` reads the sense ADC; `mtr_sense_raw_to_ma()` converts to mA (`ADC_VREF_MV` = 3300).
+- **`display_hw.c/.h`** — active ST7789V driver (polled SPI). `st_init()`, `st_fill_color()`, `gfx_draw_string()`, `gfx_draw_filled_rectangle()`, color consts `ST_*`. See [[display-spi-constraints]]: 16-bit SPI and DMA do **not** work here — use 8-bit SPI streaming with a single CS.
+- **`gfx_plotter.c/.h`** — scrolling strip-chart widget over `display_hw`. `gfx_plotter_create(...)` returns a `GfxPlotter` whose `push(&p, value)` plots one sample scaled to `[min,max]`.
+- **`fonts.c/.h`** — bitmap fonts `Font_7x10`, `Font_11x18`, `Font_16x26` (`FontDef` = width/height/data) consumed by `gfx_draw_string()`.
 
 ### FreeRTOS configuration
 - Timer1 tick at 1 ms (`configTICK_RATE_HZ = 1000`, PR1 = 460 for default Fcy/8)
@@ -106,6 +117,11 @@ The MPLAB extension regenerates `cmake/pwr-probe-test/default/CMakeLists.txt` an
 | `cmake/pwr-probe-test/default/user.cmake` | Build customisation — debug config |
 | `cmake/pwr-probe-test/default.production/user.cmake` | Build customisation — production config (keep in sync with debug) |
 | `src/display_hw.c/.h` | Active ST7789V display driver (polled SPI) |
+| `src/gfx_plotter.c/.h` | Scrolling strip-chart widget over `display_hw` |
+| `src/fonts.c/.h` | Bitmap fonts (`Font_7x10`, `Font_11x18`, `Font_16x26`) for `gfx_draw_string` |
+| `src/pwm.c/.h` | Timer2/OC1–OC4 edge-aligned PWM driver |
+| `src/rgbw.c/.h` | RGBW status LED driver over `pwm` |
+| `src/motor.c/.h` | Lock motor drive + current-sense ADC |
 | `src/hardware.h` | Shared type aliases, macros, GPIO/ADC structs and inline helpers |
 | `FreeRTOS/Source/portable/MPLAB/PIC24_dsPIC/portmacro.h` | Patched: adds `#include <xc.h>` for `SET_CPU_IPL`; guards `SIZE_MAX` |
 | `FreeRTOS/Source/portable/MPLAB/PIC24_dsPIC/port.c` | Patched: adds `#include <xc.h>` + `<libpic30.h>` for SFR access |

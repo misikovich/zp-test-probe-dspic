@@ -824,6 +824,47 @@ void gfx_draw_string(uint16_t x, uint16_t y, const char *str, FontDef font, uint
 	}
 }
 
+/**
+ * @brief Write text and optionally reserve a fixed-width background field.
+ * @param  x&y -> cursor of the start point.
+ * @param str -> string to write
+ * @param font -> fontstyle of the string
+ * @param color -> color of the string
+ * @param bgcolor -> background color of the string and reserved field
+ * @param reserve_chars -> minimum number of character cells to clear first
+ * @return  none
+ */
+void gfx_draw_text(uint16_t x, uint16_t y, const char *str, FontDef font, uint16_t color, uint16_t bgcolor, uint16_t reserve_chars)
+{
+    uint16_t chars_fit;
+    uint16_t clear_chars;
+
+    if ((str == NULL) || (font.width == 0u) || (font.height == 0u)) {
+        return;
+    }
+    if ((x >= ST_CONF_WIDTH) || (y >= ST_CONF_HEIGHT)) {
+        return;
+    }
+    if (((u32)y + (u32)font.height) > (u32)ST_CONF_HEIGHT) {
+        return;
+    }
+
+    if (reserve_chars != 0u) {
+        chars_fit = (uint16_t)(((u32)ST_CONF_WIDTH - (u32)x) / (u32)font.width);
+        clear_chars = reserve_chars;
+        if (clear_chars > chars_fit) {
+            clear_chars = chars_fit;
+        }
+        if (clear_chars != 0u) {
+            gfx_draw_filled_rectangle(x, y,
+                    (uint16_t)(clear_chars * (uint16_t)font.width),
+                    font.height, bgcolor);
+        }
+    }
+
+    gfx_draw_string(x, y, str, font, color, bgcolor);
+}
+
 /** 
  * @brief Draw a filled Rectangle with single color
  * @param  x&y -> coordinates of the starting point
