@@ -51,13 +51,15 @@ static volatile SensorReadings SENSOR_VALUES = { 0u, 0u, 0u };
 
 #define RGBW_DEFAULT_DURATION 350u
 
-RGBW_STATE RGBW_STATE_GREEN =   { 0, 255, 0, 0};
-RGBW_STATE RGBW_STATE_GREENF =  { 0, 255, 12, 0};
-RGBW_STATE RGBW_STATE_BLUE =    { 0, 0, 255, 0};
-RGBW_STATE RGBW_STATE_BLUEF =   { 4, 12, 255, 0};
-RGBW_STATE RGBW_STATE_RED =     { 255, 0, 0, 0};
-RGBW_STATE RGBW_STATE_REDF =    { 255, 0, 5, 0};
-RGBW_STATE RGBW_STATE_ERR =     { 220, 40, 22, 0};
+RGBW_STATE RGBW_STATE_GREEN =       { 0, 255, 0, 0};
+RGBW_STATE RGBW_STATE_GREENF =      { 0, 255, 12, 0};
+RGBW_STATE RGBW_STATE_BLUE =        { 0, 0, 255, 0};
+RGBW_STATE RGBW_STATE_BLUEF =       { 4, 12, 255, 0};
+RGBW_STATE RGBW_STATE_RED =         { 255, 0, 0, 0};
+RGBW_STATE RGBW_STATE_REDF =        { 255, 0, 5, 0};
+RGBW_STATE RGBW_STATE_ERR =         { 220, 40, 22, 0};
+RGBW_STATE RGBW_STATE_UNLOCKED =    { 5, 255, 45, 0};
+RGBW_STATE RGBW_STATE_LOCKED =      { 255, 5, 28, 0};
 
 typedef struct {
     char text[6];
@@ -116,11 +118,11 @@ static void vMotorTestTask(void *pvParameters)
 
     task_hold(1500u);
     forever {
-        rgbw_new_transition(RGBW_STATE_REDF, RGBW_DEFAULT_DURATION);
+        rgbw_new_transition(RGBW_STATE_LOCKED, RGBW_DEFAULT_DURATION);
         mtr_hold(LOCK, 2000u);
         mtr_hold(STOP, 300u);
 
-        rgbw_new_transition(RGBW_STATE_BLUEF, RGBW_DEFAULT_DURATION);
+        rgbw_new_transition(RGBW_STATE_UNLOCKED, RGBW_DEFAULT_DURATION);
         mtr_hold(UNLOCK, 500u);
         mtr_hold(STOP, 2000u);
     }
