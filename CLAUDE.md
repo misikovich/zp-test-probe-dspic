@@ -108,6 +108,15 @@ The MPLAB extension regenerates `cmake/pwr-probe-test/default/CMakeLists.txt` an
 - Device macros explicit in `defines` — XC16 injects them from `-mcpu` but cpptools does not
 - Do NOT add `"C_Cpp.default.configurationProvider": "microchip.mplab-clangd"` to `.vscode/settings.json` — MPLAB clangd extension overrides include paths with empty config until its binary downloads, breaking IntelliSense
 
+## Image assets (PNG → header)
+
+`tools/png2h.py` (host-side, needs Pillow: `python -m pip install Pillow`) converts a PNG into an RGB565 C header for `gfx_draw_image(x, y, w, h, data)`.
+
+```powershell
+python tools/png2h.py logo.png -o src/img_logo.h -n img_logo
+```
+Emits `static const uint16_t img_logo[]` + `IMG_LOGO_WIDTH`/`IMG_LOGO_HEIGHT`. Words are **byte-swapped** RGB565 by default: `gfx_draw_image` streams the array as raw bytes and PIC24 is little-endian, so swapping puts the high byte on the wire first (matching `st_spi_write_color`). Use `--no-swap` only for the MODE16 path (`ST_CONF_USE_SPI16_COLOR_FILL`). Transparency is flattened over `--bg` (default black); `--resize WxH` scales first. Warns if image exceeds 240×240.
+
 ## Key Files
 
 | Path | Purpose |
@@ -123,6 +132,7 @@ The MPLAB extension regenerates `cmake/pwr-probe-test/default/CMakeLists.txt` an
 | `src/rgbw.c/.h` | RGBW status LED driver over `pwm` |
 | `src/motor.c/.h` | Lock motor drive + current-sense ADC |
 | `src/hardware.h` | Shared type aliases, macros, GPIO/ADC structs and inline helpers |
+| `tools/png2h.py` | Host tool: PNG → RGB565 header for `gfx_draw_image` (byte-swapped; needs Pillow) |
 | `FreeRTOS/Source/portable/MPLAB/PIC24_dsPIC/portmacro.h` | Patched: adds `#include <xc.h>` for `SET_CPU_IPL`; guards `SIZE_MAX` |
 | `FreeRTOS/Source/portable/MPLAB/PIC24_dsPIC/port.c` | Patched: adds `#include <xc.h>` + `<libpic30.h>` for SFR access |
 | `out/` | Build artifacts (ELF, HEX) |
