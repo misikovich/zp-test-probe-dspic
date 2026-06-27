@@ -16,7 +16,7 @@ set(COMMON_FLAGS
     -D__24EP256MC206__
     -D__PIC24E__
     -g
-    -O0
+    -O3
     -msmart-io=1
     -Wall
     -msfr-warn=off

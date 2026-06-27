@@ -38,6 +38,7 @@ static const u16 s_prescale[4] = { 1u, 8u, 64u, 256u };
 
 static u32 s_period_ticks;
 static u16 s_duty[4];
+static u8 s_duty_valid[4];
 static u8 s_timer_ready;
 static u8 s_pps_mapped[4];
 
@@ -205,6 +206,7 @@ void pwm_init(PwmPin p, u16 duty)
     *oc->r = 0u;
     *oc->rs = 0u;
     s_pps_mapped[idx] = 0u;
+    s_duty_valid[idx] = 0u;
 
     gpio_init_dw(&p.gpio);
     gpio_dw(&p.gpio, 0u);
@@ -227,9 +229,15 @@ void pwm_set_duty(PwmPin p, u16 duty)
         pwm_timer_init(PWM_DEFAULT_FREQ_HZ);
     }
 
-    duty = pwm_clamp_duty(duty);
-    s_duty[idx] = duty;
     oc = &s_oc[idx];
+    duty = pwm_clamp_duty(duty);
+
+    if (s_duty_valid[idx] && (s_duty[idx] == duty)) {
+        return;
+    }
+
+    s_duty[idx] = duty;
+    s_duty_valid[idx] = 1u;
 
     gpio_init_dw(&p.gpio);
 
@@ -247,6 +255,7 @@ void pwm_set_duty(PwmPin p, u16 duty)
 
     if (!s_pps_mapped[idx]) {
         if (!pwm_pps_write(p.rp_num, oc->pps_fn)) {
+            s_duty_valid[idx] = 0u;
             gpio_dw(&p.gpio, 0u);
             return;
         }
@@ -254,12 +263,20 @@ void pwm_set_duty(PwmPin p, u16 duty)
     }
 
     cmp = pwm_compare_from_duty(duty);
-    if ((*oc->con1 & PWM_OC_MODE_MASK) == 0u) {
-        *oc->r = cmp;
-    }
+    /* With SYNCSEL=Timer2 the duty compare is OCxR, so it must be rewritten on
+     * every update -- not only at (re)start. OCxR is buffered (transfers at the
+     * Timer2 period boundary), so live writes don't glitch. OCxRS kept in sync
+     * to stay correct under either buffering model. Previously OCxR was set only
+     * when the channel was off, so duty froze at its first value while running
+     * and transitions held one brightness instead of fading. */
+    *oc->r = cmp;
     *oc->rs = cmp;
-    *oc->con2 = PWM_OC_SYNC_TIMER2;
-    *oc->con1 = PWM_OC_PWM_TIMER2;
+    if (*oc->con2 != PWM_OC_SYNC_TIMER2) {
+        *oc->con2 = PWM_OC_SYNC_TIMER2;
+    }
+    if ((*oc->con1 & PWM_OC_MODE_MASK) != PWM_OC_PWM_TIMER2) {
+        *oc->con1 = PWM_OC_PWM_TIMER2;
+    }
 }
 
 void pwm_stop(PwmPin p)
@@ -272,6 +289,7 @@ void pwm_stop(PwmPin p)
     }
 
     pwm_disable_output(p, idx);
+    s_duty_valid[idx] = 0u;
     gpio_dw(&p.gpio, 0u);
 }
 

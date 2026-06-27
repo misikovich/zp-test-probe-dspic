@@ -49,6 +49,16 @@
 
 static volatile SensorReadings SENSOR_VALUES = { 0u, 0u, 0u };
 
+#define RGBW_DEFAULT_DURATION 350u
+
+RGBW_STATE RGBW_STATE_GREEN =   { 0, 255, 0, 0};
+RGBW_STATE RGBW_STATE_GREENF =  { 0, 255, 12, 0};
+RGBW_STATE RGBW_STATE_BLUE =    { 0, 0, 255, 0};
+RGBW_STATE RGBW_STATE_BLUEF =   { 4, 12, 255, 0};
+RGBW_STATE RGBW_STATE_RED =     { 255, 0, 0, 0};
+RGBW_STATE RGBW_STATE_REDF =    { 255, 0, 5, 0};
+RGBW_STATE RGBW_STATE_ERR =     { 220, 40, 22, 0};
+
 typedef struct {
     char text[6];
 } StrU16;
@@ -59,6 +69,8 @@ void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName)
     unused(pcTaskName);
 
     __builtin_disable_interrupts();
+
+    rgbw_new_transition(RGBW_STATE_ERR, RGBW_DEFAULT_DURATION);
     forever {
     }
 }
@@ -66,6 +78,8 @@ void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName)
 void vApplicationMallocFailedHook(void)
 {
     __builtin_disable_interrupts();
+
+    rgbw_new_transition(RGBW_STATE_ERR, RGBW_DEFAULT_DURATION);
     forever {
     }
 }
@@ -93,18 +107,7 @@ static void prvInitHardware(void)
     rgbw_init();
     mtr_init();
     sensors_init();
-}
-
-static void vHeartbeatTask(void *pvParameters) 
-{
-    unused(pvParameters);
-
-    forever {
-        rgbw_hold_g(ON, 50u);
-        rgbw_hold_g(OFF, 100u);
-        rgbw_hold_g(ON, 50u);
-        rgbw_hold_g(OFF, 800u);
-    }
+    rgbw_new_transition(RGBW_STATE_GREENF, RGBW_DEFAULT_DURATION);
 }
 
 static void vMotorTestTask(void *pvParameters) 
@@ -113,13 +116,11 @@ static void vMotorTestTask(void *pvParameters)
 
     task_hold(1500u);
     forever {
-        rgbw_set_r(ON);
-        rgbw_set_b(OFF);
+        rgbw_new_transition(RGBW_STATE_REDF, RGBW_DEFAULT_DURATION);
         mtr_hold(LOCK, 2000u);
         mtr_hold(STOP, 300u);
 
-        rgbw_set_r(OFF);
-        rgbw_set_b(ON);
+        rgbw_new_transition(RGBW_STATE_BLUEF, RGBW_DEFAULT_DURATION);
         mtr_hold(UNLOCK, 500u);
         mtr_hold(STOP, 2000u);
     }
@@ -159,7 +160,7 @@ static void draw_sensor_upd_indicator(u16 y, bool upd)
 {
     gfx_draw_filled_rectangle(SENSOR_UPD_X, (u16)(y + 1u),
             SENSOR_UPD_SIZE, SENSOR_UPD_SIZE,
-            upd ? ST_YELLOW : DISPLAY_BG);
+            upd ? ST_GREEN : DISPLAY_BG);
 }
 
 void vDisplayDemoTask(void *pvParameters)
@@ -169,6 +170,8 @@ void vDisplayDemoTask(void *pvParameters)
 
     task_hold(50u);
     st_init();
+
+
     st_fill_color(DISPLAY_BG);
     plotter = gfx_plotter_create("MTR mA",
             MTR_PLOT_X, MTR_PLOT_Y, MTR_PLOT_W, MTR_PLOT_H,
@@ -228,12 +231,21 @@ static void vSensorPollTask(void *pvParameters)
     }
 }
 
+static void vRGBWTickTask(void *pvParameters)
+{
+    unused(pvParameters);
+    task_hold(100);
+
+    forever {
+        rgbw_tick();
+    }
+}
 int main(void)
 {
     prvInitClock();
     prvInitHardware();
 
-    configASSERT(xTaskCreate(vHeartbeatTask, "Heartbeat",
+    configASSERT(xTaskCreate(vRGBWTickTask, "RGBW",
             configMINIMAL_STACK_SIZE, NULL, APP_TASK_PRIORITY_NORMAL, NULL) == pdPASS);
     configASSERT(xTaskCreate(vDisplayDemoTask, "Display",
             DISPLAY_TASK_STACK, NULL, APP_TASK_PRIORITY_NORMAL, NULL) == pdPASS);
@@ -241,6 +253,7 @@ int main(void)
             configMINIMAL_STACK_SIZE, NULL, APP_TASK_PRIORITY_MOTOR, NULL) == pdPASS);
     configASSERT(xTaskCreate(vSensorPollTask, "Sensors",
             configMINIMAL_STACK_SIZE, NULL, APP_TASK_PRIORITY_NORMAL, NULL) == pdPASS);
+
 
     vTaskStartScheduler();
 
