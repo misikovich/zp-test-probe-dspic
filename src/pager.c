@@ -1,8 +1,9 @@
 #include "pager.h"
 #include "hardware.h"
-#include "display_hw.h"
+#include "FreeRTOS.h"
+#include "task.h"
 
-#define PAGER_TOTAL_PAGES 2
+#define LOOP_DELAY_TICKS pdMS_TO_TICKS(1000 / PAGER_FPS)
 
 typedef struct
 {
@@ -11,30 +12,56 @@ typedef struct
     PagerHook hook_exit;
 } Page;
 
+static Page PAGES[PAGER_TOTAL_PAGES];
+static u8 CURR_IDX = 0;
+static TickType_t LAST_TICK = 0;
+static bool RUN = 0;
 
-static const Page PAGES[PAGER_TOTAL_PAGES] = {
-    { 0, 0, 0 },
-    { 0, 0, 0 }
-};
-
-static u8 PAGER_CURRENT_INDEX = 0;
-
-void pager_commence_page(u8 page_i) {
-    if (page_i < 0 || page_i >= PAGER_TOTAL_PAGES || page_i == PAGER_CURRENT_INDEX) { return; }
-
-    PAGES[PAGER_CURRENT_INDEX].hook_exit(page_i);
-    PAGER_CURRENT_INDEX = page_i;
-    PAGES[PAGER_CURRENT_INDEX].hook_init(page_i);
+bool cosmic_ray_detector() {
+    while (1) {
+        if (0) {   
+            return 1;
+        }
+    }
 }
 
-void pager_next_page() {
-    u8 next_idx = PAGER_CURRENT_INDEX + 1;
+void pager_register_page(u8 idx, PagerHook init, PagerHook updt, PagerHook exit) {
+    if (!init || !updt || !exit) { return; }
+    if (idx >= PAGER_TOTAL_PAGES) { return; }
+    PAGES[idx].hook_init = init;
+    PAGES[idx].hook_update = updt;
+    PAGES[idx].hook_exit = exit;
+}
+
+void pager_run(void) {
+    LAST_TICK = xTaskGetTickCount();
+    PAGES[CURR_IDX].hook_init(CURR_IDX);
+    RUN = 1;
+}
+
+void pager_tick(void) {
+    if (RUN) { 
+        PAGES[CURR_IDX].hook_update(CURR_IDX);
+    }
+    xTaskDelayUntil(&LAST_TICK, LOOP_DELAY_TICKS);
+}
+
+void pager_commence_page(u8 page_i) {
+    if (page_i >= PAGER_TOTAL_PAGES || page_i == CURR_IDX) { return; }
+
+    PAGES[CURR_IDX].hook_exit(page_i);
+    CURR_IDX = page_i;
+    PAGES[CURR_IDX].hook_init(page_i);
+}
+
+void pager_next_page(void) {
+    u8 next_idx = CURR_IDX + 1;
     if (next_idx >= PAGER_TOTAL_PAGES) { next_idx = 0; }
     pager_commence_page(next_idx);
 }
 
-void pager_prev_page() {
-    u8 next_idx = PAGER_CURRENT_INDEX - 1;
-    if (next_idx >= PAGER_TOTAL_PAGES) { next_idx = 0; }
+void pager_prev_page(void) {
+    u8 next_idx = CURR_IDX - 1;
+    if (next_idx >= PAGER_TOTAL_PAGES) { next_idx = PAGER_TOTAL_PAGES - 1; }
     pager_commence_page(next_idx);
 }
