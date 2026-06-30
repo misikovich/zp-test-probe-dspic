@@ -5,6 +5,7 @@
 #include <xc.h>
 
 typedef uint32_t u32;
+typedef int32_t s32;
 typedef uint16_t u16;
 typedef uint8_t u8;
 typedef uint8_t bool;
@@ -14,7 +15,7 @@ typedef uint8_t bool;
 #define unused(v) (void)(v)
 #define forever for (;;)
 
-#define ADC1_RESULT_MAX 4095u
+#define ADC1_RESULT_MAX 1023u
 
 typedef struct {
     volatile u16 *lat;
@@ -64,7 +65,7 @@ static inline void gpio_dw(const GPIO *pin, u8 state) {
 static inline void adc1_init(void) {
     AD1CON1bits.ADON = 0u;
 
-    AD1CON1bits.AD12B = 1u;
+    AD1CON1bits.AD12B = 0u;
     AD1CON1bits.FORM = 0u;
     AD1CON1bits.SSRC = 7u;
     AD1CON1bits.ASAM = 0u;

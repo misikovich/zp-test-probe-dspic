@@ -43,6 +43,12 @@ except ImportError:
 DISP_W = 240
 DISP_H = 240
 
+# XC16 places `const` in the auto_psv `.const` section, a single page shared by
+# ALL const data (fonts, color tables, every image). Hard ceiling 32 KB.
+PSV_CONST_LIMIT = 32768
+# Warn margin: leave room for fonts/tables that share the same section.
+PSV_WARN_BYTES = 24576  # 24 KB
+
 
 def rgb888_to_565(r, g, b):
     """Convert 8-bit RGB to RGB565 with rounding (logical value, not byte-swapped)."""
@@ -119,6 +125,20 @@ def main():
         sys.stderr.write(
             "warning: %dx%d exceeds %dx%d display; gfx_draw_image() will reject "
             "off-screen placement.\n" % (w, h, DISP_W, DISP_H))
+
+    nbytes = w * h * 2
+    if nbytes > PSV_CONST_LIMIT:
+        sys.stderr.write(
+            "warning: %d bytes (%dx%d) exceeds the XC16 auto_psv .const limit of "
+            "%d B (32 KB). This WILL fail to link: '.const exceeds 32K'. Shrink with "
+            "--resize, or move to a space(prog) flash-stream path.\n"
+            % (nbytes, w, h, PSV_CONST_LIMIT))
+    elif nbytes > PSV_WARN_BYTES:
+        sys.stderr.write(
+            "warning: %d bytes (%dx%d) is large. .const (32 KB) is shared by fonts "
+            "and all other const, so this may overflow once linked. Shrink with "
+            "--resize if the link reports '.const exceeds 32K'.\n"
+            % (nbytes, w, h))
 
     name = sanitize_ident(args.name or os.path.splitext(os.path.basename(args.png))[0])
     guard = name.upper() + "_H"
